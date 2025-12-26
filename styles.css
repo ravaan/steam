@@ -1,26 +1,27 @@
 /* CSS Variables - Themes */
 :root {
-    --bg: #1b2838;
-    --bg-card: #16202d;
-    --text: #c7d5e0;
-    --text-muted: #8f98a0;
-    --accent: #66c0f4;
-    --accent-hover: #4fa3d4;
-    --border: #2a475e;
-    --success: #5ba32b;
-    --error: #c83c3c;
-    --transition-speed: 0.3s;
-    --font-mono: 'Space Mono', 'Roboto Mono', 'Consolas', monospace;
+    /* Dark theme (default) - True dark, neutral */
+    --bg: #0d0d0d;
+    --bg-card: #161616;
+    --text: #e0e0e0;
+    --text-muted: #707070;
+    --accent: #ffffff;
+    --accent-hover: #b0b0b0;
+    --border: #252525;
+    --success: #4ade80;
+    --error: #f87171;
+    --transition-speed: 0.2s;
+    --font-mono: 'Space Mono', 'SF Mono', 'Monaco', monospace;
 }
 
 [data-theme="light"] {
-    --bg: #f5f5f5;
+    --bg: #fafafa;
     --bg-card: #ffffff;
-    --text: #1b2838;
-    --text-muted: #666666;
-    --accent: #1a9fff;
-    --accent-hover: #0d8de8;
-    --border: #e0e0e0;
+    --text: #171717;
+    --text-muted: #737373;
+    --accent: #171717;
+    --accent-hover: #404040;
+    --border: #e5e5e5;
 }
 
 [data-theme="steam"] {
@@ -33,7 +34,7 @@
     --border: #2a475e;
 }
 
-/* Reset & Base */
+/* Reset */
 *, *::before, *::after {
     box-sizing: border-box;
     margin: 0;
@@ -48,13 +49,13 @@ html {
 
 body {
     font-family: var(--font-mono);
-    background-color: var(--bg);
+    background: var(--bg);
     color: var(--text);
     min-height: 100vh;
     display: flex;
     flex-direction: column;
-    transition: background-color var(--transition-speed), color var(--transition-speed);
-    line-height: 1.6;
+    transition: background var(--transition-speed), color var(--transition-speed);
+    line-height: 1.5;
 }
 
 /* Selection */
@@ -63,16 +64,17 @@ body {
     color: var(--bg);
 }
 
-::-moz-selection {
-    background: var(--text);
-    color: var(--bg);
+/* Links */
+a {
+    color: inherit;
+    text-decoration: none;
 }
 
 /* Toggle Buttons */
 .toggles {
     position: fixed;
-    top: 1.5rem;
-    right: 1.5rem;
+    top: 2rem;
+    right: 2rem;
     display: flex;
     gap: 0.75rem;
     z-index: 100;
@@ -80,10 +82,10 @@ body {
 }
 
 .toggle-btn {
-    width: 48px;
-    height: 48px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
-    border: 2px solid var(--text-muted);
+    border: 1.5px solid var(--border);
     background: transparent;
     cursor: pointer;
     display: flex;
@@ -94,91 +96,86 @@ body {
 }
 
 .toggle-btn:hover {
-    border-color: var(--text);
-    transform: scale(1.05);
+    border-color: var(--text-muted);
 }
 
 .toggle-btn:focus {
     outline: none;
+}
+
+.toggle-btn:focus-visible {
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(102, 192, 244, 0.3);
 }
 
 /* CSS Icons */
 .icon {
-    width: 24px;
-    height: 24px;
+    width: 20px;
+    height: 20px;
     position: relative;
     display: block;
-    transition: transform var(--transition-speed), opacity var(--transition-speed);
 }
 
 /* Moon Icon */
 .icon.moon::before {
     content: '';
     position: absolute;
-    width: 18px;
-    height: 18px;
-    border: 2px solid var(--text);
+    width: 14px;
+    height: 14px;
+    border: 1.5px solid var(--text);
     border-radius: 50%;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    box-shadow: inset 6px -2px 0 0 var(--text);
+    box-shadow: inset 5px -2px 0 0 var(--text);
 }
 
 /* Sun Icon */
 .icon.sun::before {
     content: '';
     position: absolute;
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
     background: var(--text);
     border-radius: 50%;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
     box-shadow:
-        0 -10px 0 -3px var(--text),
-        0 10px 0 -3px var(--text),
-        -10px 0 0 -3px var(--text),
-        10px 0 0 -3px var(--text),
-        -7px -7px 0 -3px var(--text),
-        7px 7px 0 -3px var(--text),
-        -7px 7px 0 -3px var(--text),
-        7px -7px 0 -3px var(--text);
+        0 -8px 0 -2.5px var(--text),
+        0 8px 0 -2.5px var(--text),
+        -8px 0 0 -2.5px var(--text),
+        8px 0 0 -2.5px var(--text);
 }
 
 /* Steam Icon */
 .icon.steam::before {
     content: '';
     position: absolute;
-    width: 14px;
-    height: 14px;
-    border: 2px solid var(--text);
+    width: 12px;
+    height: 12px;
+    border: 1.5px solid var(--text);
     border-radius: 50%;
-    top: 4px;
-    left: 5px;
+    top: 3px;
+    left: 4px;
 }
 
 .icon.steam::after {
     content: '';
     position: absolute;
-    width: 2px;
-    height: 10px;
+    width: 1.5px;
+    height: 8px;
     background: var(--text);
-    bottom: 2px;
-    left: 11px;
+    bottom: 3px;
+    left: 9px;
     transform: rotate(-30deg);
-    border-radius: 1px;
 }
 
-/* Sound On Icon (Musical Note) */
+/* Sound On Icon */
 .icon.sound-on::before {
     content: '';
     position: absolute;
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     background: var(--text);
     border-radius: 50%;
     bottom: 4px;
@@ -188,50 +185,48 @@ body {
 .icon.sound-on::after {
     content: '';
     position: absolute;
-    width: 2px;
-    height: 14px;
+    width: 1.5px;
+    height: 12px;
     background: var(--text);
-    bottom: 8px;
-    left: 10px;
-    border-radius: 1px;
+    bottom: 7px;
+    left: 8px;
 }
 
-/* Sound Off Icon (Muted) */
+/* Sound Off Icon */
 .icon.sound-off::before {
     content: '';
     position: absolute;
-    width: 6px;
-    height: 10px;
+    width: 5px;
+    height: 8px;
     background: var(--text);
-    top: 7px;
+    top: 6px;
     left: 5px;
-    border-radius: 2px;
+    border-radius: 1px;
 }
 
 .icon.sound-off::after {
     content: '';
     position: absolute;
-    width: 14px;
-    height: 2px;
+    width: 12px;
+    height: 1.5px;
     background: var(--error);
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%) rotate(-45deg);
-    border-radius: 1px;
 }
 
 /* Container */
 .container {
-    max-width: 800px;
+    max-width: 640px;
     width: 100%;
     margin: 0 auto;
-    padding: 4rem 1.5rem 2rem;
+    padding: 6rem 1.5rem 3rem;
     flex: 1;
 }
 
 /* Header */
 .header {
-    margin-bottom: 3rem;
+    margin-bottom: 4rem;
     text-align: center;
 }
 
@@ -244,15 +239,13 @@ body {
 
 .avatar-wrapper {
     position: relative;
-    display: inline-block;
 }
 
 .avatar {
-    width: 96px;
-    height: 96px;
+    width: 80px;
+    height: 80px;
     border-radius: 50%;
-    border: 3px solid var(--border);
-    transition: border-color var(--transition-speed);
+    border: none;
     object-fit: cover;
     background: var(--bg-card);
 }
@@ -263,17 +256,17 @@ body {
 
 @keyframes pulse {
     0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
+    50% { opacity: 0.4; }
 }
 
 .status-indicator {
     position: absolute;
-    bottom: 4px;
-    right: 4px;
-    width: 16px;
-    height: 16px;
+    bottom: 2px;
+    right: 2px;
+    width: 14px;
+    height: 14px;
     border-radius: 50%;
-    border: 3px solid var(--bg);
+    border: 2px solid var(--bg);
     background: var(--text-muted);
 }
 
@@ -282,74 +275,75 @@ body {
 }
 
 .status-indicator.in-game {
-    background: var(--accent);
+    background: #66c0f4;
 }
 
 .title {
-    font-size: 1.5rem;
-    font-weight: 700;
+    font-size: 1.25rem;
+    font-weight: 400;
     color: var(--text);
-    margin-bottom: 0.5rem;
+    letter-spacing: -0.02em;
+}
+
+.title span {
+    font-weight: 700;
 }
 
 .status-text {
     color: var(--text-muted);
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
 }
 
 /* Stats Grid */
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 1rem;
-    margin-bottom: 3rem;
+    gap: 1px;
+    background: var(--border);
+    margin-bottom: 4rem;
 }
 
 .stat-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 1.5rem;
+    background: var(--bg);
+    padding: 2rem 1rem;
     text-align: center;
-    transition: all var(--transition-speed);
-}
-
-.stat-card:hover {
-    border-color: var(--accent);
-    transform: translateY(-2px);
 }
 
 .stat-label {
     display: block;
-    font-size: 0.75rem;
+    font-size: 0.6875rem;
     color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-bottom: 0.5rem;
+    letter-spacing: 0.1em;
+    margin-bottom: 0.75rem;
 }
 
 .stat-value {
     display: block;
-    font-size: 1.5rem;
+    font-size: 1.75rem;
     font-weight: 700;
-    color: var(--accent);
+    color: var(--text);
+    letter-spacing: -0.02em;
 }
 
 /* Recent Games */
+.recent-games {
+    margin-bottom: 2rem;
+}
+
 .section-title {
-    font-size: 1rem;
+    font-size: 0.6875rem;
+    font-weight: 400;
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    margin-bottom: 1rem;
-    padding-bottom: 0.5rem;
-    border-bottom: 1px solid var(--border);
+    margin-bottom: 1.5rem;
 }
 
 .games-list {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 0.5rem;
 }
 
 .game-item {
@@ -358,19 +352,17 @@ body {
     gap: 1rem;
     padding: 1rem;
     background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    transition: all var(--transition-speed);
+    border-radius: 4px;
+    transition: background var(--transition-speed);
 }
 
 .game-item:hover {
-    border-color: var(--accent);
-    transform: translateX(4px);
+    background: var(--border);
 }
 
 .game-icon {
-    width: 48px;
-    height: 48px;
+    width: 40px;
+    height: 40px;
     border-radius: 4px;
     object-fit: cover;
     background: var(--border);
@@ -382,73 +374,68 @@ body {
 }
 
 .game-name {
+    font-size: 0.875rem;
     font-weight: 700;
     color: var(--text);
-    margin-bottom: 0.25rem;
+    margin-bottom: 0.125rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
 .game-hours {
-    font-size: 0.875rem;
+    font-size: 0.75rem;
     color: var(--text-muted);
 }
 
 .game-hours-value {
-    color: var(--accent);
+    color: var(--text);
 }
 
 /* No Games State */
 .no-games {
     text-align: center;
-    padding: 2rem;
+    padding: 3rem 1rem;
     color: var(--text-muted);
+    font-size: 0.875rem;
 }
 
 /* Refresh Indicator */
 .refresh-indicator {
     text-align: center;
-    margin-top: 2rem;
-    padding: 0.75rem;
-    font-size: 0.75rem;
+    margin-top: 3rem;
+    font-size: 0.6875rem;
     color: var(--text-muted);
-}
-
-.refresh-text {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
 }
 
 /* Footer */
 .footer {
     text-align: center;
-    padding: 1.5rem;
-    font-size: 0.75rem;
+    padding: 2rem;
+    font-size: 0.6875rem;
     color: var(--text-muted);
     user-select: none;
 }
 
 .footer-divider {
-    margin: 0 0.5rem;
+    margin: 0 0.75rem;
+    opacity: 0.5;
 }
 
 .footer kbd {
     display: inline-block;
-    padding: 0.15rem 0.4rem;
+    padding: 0.125rem 0.375rem;
     font-family: var(--font-mono);
-    font-size: 0.7rem;
+    font-size: 0.625rem;
     background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: 3px;
 }
 
 /* Overlay */
 .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.8);
+    background: rgba(0, 0, 0, 0.9);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -456,7 +443,7 @@ body {
     visibility: hidden;
     transition: opacity var(--transition-speed), visibility var(--transition-speed);
     z-index: 1000;
-    padding: 1rem;
+    padding: 1.5rem;
 }
 
 .overlay.active {
@@ -466,45 +453,36 @@ body {
 
 .overlay-content {
     background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: 8px;
     padding: 2rem;
-    max-width: 400px;
+    max-width: 360px;
     width: 100%;
     text-align: center;
-    transform: scale(0.9);
-    transition: transform var(--transition-speed);
-}
-
-.overlay.active .overlay-content {
-    transform: scale(1);
 }
 
 .overlay-title {
-    font-size: 1.25rem;
+    font-size: 1rem;
+    font-weight: 700;
     margin-bottom: 1.5rem;
     color: var(--text);
 }
 
 .overlay-desc {
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
     color: var(--text-muted);
     margin-bottom: 1rem;
 }
 
 .overlay-hint {
-    font-size: 0.75rem;
+    font-size: 0.6875rem;
     color: var(--text-muted);
     margin-top: 1rem;
 }
 
 .overlay-hint a {
-    color: var(--accent);
-    text-decoration: none;
-}
-
-.overlay-hint a:hover {
+    color: var(--text);
     text-decoration: underline;
+    text-underline-offset: 2px;
 }
 
 /* Shortcuts List */
@@ -515,10 +493,12 @@ body {
 }
 
 .shortcuts-list li {
-    padding: 0.5rem 0;
+    padding: 0.625rem 0;
     display: flex;
     align-items: center;
     gap: 1rem;
+    font-size: 0.8125rem;
+    color: var(--text-muted);
     border-bottom: 1px solid var(--border);
 }
 
@@ -528,65 +508,66 @@ body {
 
 .shortcuts-list kbd {
     display: inline-block;
-    min-width: 32px;
+    min-width: 28px;
     padding: 0.25rem 0.5rem;
     font-family: var(--font-mono);
-    font-size: 0.875rem;
+    font-size: 0.75rem;
     background: var(--bg);
-    border: 1px solid var(--border);
     border-radius: 4px;
     text-align: center;
+    color: var(--text);
 }
 
 /* Buttons */
 .btn {
     font-family: var(--font-mono);
-    font-size: 0.875rem;
-    padding: 0.75rem 1.5rem;
-    border-radius: 6px;
+    font-size: 0.8125rem;
+    padding: 0.625rem 1.25rem;
+    border-radius: 4px;
     border: none;
     cursor: pointer;
     transition: all var(--transition-speed);
 }
 
 .btn-primary {
-    background: var(--accent);
+    background: var(--text);
     color: var(--bg);
 }
 
 .btn-primary:hover {
-    background: var(--accent-hover);
+    opacity: 0.8;
 }
 
 .btn-secondary {
     background: transparent;
-    color: var(--text);
+    color: var(--text-muted);
     border: 1px solid var(--border);
 }
 
 .btn-secondary:hover {
-    border-color: var(--text);
+    border-color: var(--text-muted);
+    color: var(--text);
 }
 
 .overlay-close {
     font-family: var(--font-mono);
-    font-size: 0.875rem;
-    padding: 0.75rem 2rem;
-    background: var(--accent);
+    font-size: 0.8125rem;
+    padding: 0.625rem 1.5rem;
+    background: var(--text);
     color: var(--bg);
     border: none;
-    border-radius: 6px;
+    border-radius: 4px;
     cursor: pointer;
-    transition: background var(--transition-speed);
+    transition: opacity var(--transition-speed);
 }
 
 .overlay-close:hover {
-    background: var(--accent-hover);
+    opacity: 0.8;
 }
 
 .overlay-buttons {
     display: flex;
-    gap: 1rem;
+    gap: 0.75rem;
     justify-content: center;
 }
 
@@ -595,10 +576,10 @@ body {
     width: 100%;
     padding: 0.75rem 1rem;
     font-family: var(--font-mono);
-    font-size: 1rem;
+    font-size: 0.875rem;
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: 4px;
     color: var(--text);
     margin-bottom: 1rem;
     text-align: center;
@@ -607,7 +588,7 @@ body {
 
 .steam-input:focus {
     outline: none;
-    border-color: var(--accent);
+    border-color: var(--text-muted);
 }
 
 .steam-input::placeholder {
@@ -629,29 +610,26 @@ body {
 
 .toast {
     background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.75rem 1.5rem;
-    font-size: 0.875rem;
+    border-radius: 4px;
+    padding: 0.625rem 1.25rem;
+    font-size: 0.8125rem;
     color: var(--text);
-    animation: toastIn 0.3s ease, toastOut 0.3s ease 2.7s forwards;
+    animation: toastIn 0.2s ease, toastOut 0.2s ease 2.8s forwards;
     pointer-events: auto;
 }
 
 .toast.error {
-    border-color: var(--error);
     color: var(--error);
 }
 
 .toast.success {
-    border-color: var(--success);
     color: var(--success);
 }
 
 @keyframes toastIn {
     from {
         opacity: 0;
-        transform: translateY(20px);
+        transform: translateY(10px);
     }
     to {
         opacity: 1;
@@ -662,25 +640,10 @@ body {
 @keyframes toastOut {
     from {
         opacity: 1;
-        transform: translateY(0);
     }
     to {
         opacity: 0;
-        transform: translateY(-20px);
     }
-}
-
-/* Loading State */
-.loading-skeleton {
-    background: linear-gradient(90deg, var(--bg-card) 25%, var(--border) 50%, var(--bg-card) 75%);
-    background-size: 200% 100%;
-    animation: shimmer 1.5s infinite;
-    border-radius: 4px;
-}
-
-@keyframes shimmer {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
 }
 
 /* Error State */
@@ -688,17 +651,20 @@ body {
     text-align: center;
     padding: 3rem 1rem;
     color: var(--text-muted);
+    font-size: 0.875rem;
 }
 
 .error-state h2 {
+    font-size: 1rem;
+    font-weight: 700;
     color: var(--error);
-    margin-bottom: 1rem;
+    margin-bottom: 0.75rem;
 }
 
 /* Responsive */
 @media (max-width: 600px) {
     .container {
-        padding: 5rem 1rem 1.5rem;
+        padding: 5rem 1rem 2rem;
     }
 
     .toggles {
@@ -712,25 +678,29 @@ body {
     }
 
     .avatar {
-        width: 72px;
-        height: 72px;
+        width: 64px;
+        height: 64px;
     }
 
     .title {
-        font-size: 1.25rem;
+        font-size: 1.125rem;
     }
 
     .stats-grid {
-        grid-template-columns: 1fr;
+        margin-bottom: 3rem;
+    }
+
+    .stat-card {
+        padding: 1.5rem 1rem;
     }
 
     .stat-value {
-        font-size: 1.25rem;
+        font-size: 1.5rem;
     }
 
     .game-icon {
-        width: 40px;
-        height: 40px;
+        width: 36px;
+        height: 36px;
     }
 
     .overlay-content {
@@ -743,17 +713,17 @@ body {
         font-size: 1rem;
     }
 
-    .footer {
-        font-size: 0.65rem;
+    .stat-value {
+        font-size: 1.25rem;
     }
 }
 
-/* Focus Visible for Accessibility */
+/* Focus Visible */
 .toggle-btn:focus-visible,
 .btn:focus-visible,
 .overlay-close:focus-visible,
 .steam-input:focus-visible {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--text);
     outline-offset: 2px;
 }
 
@@ -761,7 +731,6 @@ body {
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
         animation-duration: 0.01ms !important;
-        animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
     }
 }
