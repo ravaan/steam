@@ -36,7 +36,11 @@
         allGames: [],
         gamesExpanded: false,
         sortBy: 'alltime',
-        apiFailCount: 0
+        apiFailCount: 0,
+        // Loading state management
+        isLoading: false,
+        achievementFetchId: 0,  // Used to cancel stale achievement fetches
+        isFetchingAchievements: false
     };
 
     // ===================
@@ -188,29 +192,48 @@
     // Data Fetching
     // ===================
     async function fetchData() {
-        showLoadingOverlay('Loading profile...');
-
-        if (state.apiMode && state.apiKey) {
-            try {
-                await fetchWithApi();
-                // hideLoadingOverlay is called inside fetchWithApi after basic data loads
-                return;
-            } catch (error) {
-                console.warn('API fetch failed, falling back to XML:', error);
-                state.apiFailCount++;
-
-                if (state.apiFailCount >= 2) {
-                    hideLoadingOverlay();
-                    showApiKeyPrompt();
-                } else {
-                    showToast('API error, using basic mode', 'error');
-                }
-            }
+        // Prevent concurrent fetches
+        if (state.isLoading) {
+            console.log('Fetch already in progress, skipping');
+            return;
         }
 
-        // Fallback to XML
-        await fetchWithXml();
-        hideLoadingOverlay();
+        state.isLoading = true;
+        // Cancel any ongoing achievement fetch
+        state.achievementFetchId++;
+
+        showLoadingOverlay('Loading profile...');
+
+        try {
+            if (state.apiMode && state.apiKey) {
+                try {
+                    await fetchWithApi();
+                    // hideLoadingOverlay is called inside fetchWithApi after basic data loads
+                    return;
+                } catch (error) {
+                    console.warn('API fetch failed, falling back to XML:', error);
+                    state.apiFailCount++;
+
+                    if (state.apiFailCount >= 2) {
+                        hideLoadingOverlay();
+                        showApiKeyPrompt();
+                        return;
+                    } else {
+                        showToast('API error, using basic mode', 'error');
+                    }
+                }
+            }
+
+            // Fallback to XML
+            await fetchWithXml();
+            hideLoadingOverlay();
+        } catch (error) {
+            console.error('Fetch failed:', error);
+            hideLoadingOverlay();
+            showError('Failed to load profile data');
+        } finally {
+            state.isLoading = false;
+        }
     }
 
     function showLoadingOverlay(text) {
@@ -244,13 +267,13 @@
         const badgesUrl = `${CONFIG.STEAM_API_BASE}/IPlayerService/GetBadges/v1/?key=${state.apiKey}&steamid=${state.steamId}`;
         const friendsUrl = `${CONFIG.STEAM_API_BASE}/ISteamUser/GetFriendList/v1/?key=${state.apiKey}&steamid=${state.steamId}&relationship=friend`;
 
-        // Fetch all basic data in parallel
+        // Fetch all basic data in parallel (with timeout)
         const [ownedRes, playerRes, levelRes, badgesRes, friendsRes] = await Promise.all([
-            fetch(CONFIG.CORS_PROXY + encodeURIComponent(ownedGamesUrl)),
-            fetch(CONFIG.CORS_PROXY + encodeURIComponent(playerUrl)),
-            fetch(CONFIG.CORS_PROXY + encodeURIComponent(levelUrl)).catch(() => null),
-            fetch(CONFIG.CORS_PROXY + encodeURIComponent(badgesUrl)).catch(() => null),
-            fetch(CONFIG.CORS_PROXY + encodeURIComponent(friendsUrl)).catch(() => null)
+            fetchWithTimeout(CONFIG.CORS_PROXY + encodeURIComponent(ownedGamesUrl), 20000),
+            fetchWithTimeout(CONFIG.CORS_PROXY + encodeURIComponent(playerUrl), 20000),
+            fetchWithTimeout(CONFIG.CORS_PROXY + encodeURIComponent(levelUrl), 10000).catch(() => null),
+            fetchWithTimeout(CONFIG.CORS_PROXY + encodeURIComponent(badgesUrl), 10000).catch(() => null),
+            fetchWithTimeout(CONFIG.CORS_PROXY + encodeURIComponent(friendsUrl), 10000).catch(() => null)
         ]);
 
         if (!ownedRes.ok || !playerRes.ok) {
@@ -365,82 +388,126 @@
         // Render immediately with basic data
         renderProfile(profile, true);
         hideLoadingOverlay();
+        state.isLoading = false;
         playSound('refresh');
 
-        // Fetch achievements in background
-        fetchAchievementsInBackground(games);
+        // Fetch achievements in background (pass current fetchId to detect stale fetches)
+        fetchAchievementsInBackground(games, state.achievementFetchId);
     }
 
-    async function fetchAchievementsInBackground(games) {
+    async function fetchAchievementsInBackground(games, fetchId) {
         const gamesWithPlaytime = games.filter(g => (g.playtime_forever || 0) > 0);
         const totalGames = gamesWithPlaytime.length;
 
-        if (totalGames === 0) return;
+        if (totalGames === 0) {
+            // No games to fetch, mark achievements as complete with zeros
+            if (state.data && fetchId === state.achievementFetchId) {
+                state.data.totalAchievements = 0;
+                state.data.totalPossibleAchievements = 0;
+                state.data.perfectGames = 0;
+                state.data.gamesWithAchievements = 0;
+                state.data.avgAchievementCompletion = 0;
+                updateAchievementStats();
+            }
+            return;
+        }
+
+        // Prevent multiple concurrent achievement fetches
+        if (state.isFetchingAchievements) {
+            console.log('Achievement fetch already in progress');
+            return;
+        }
+
+        state.isFetchingAchievements = true;
 
         // Achievement stats accumulator
         let totalAchievements = 0;
         let totalPossible = 0;
         let perfectGames = 0;
         let gamesWithAchievements = 0;
-        let processed = 0;
 
         // Show loading indicator for achievements
         showToast(`Loading achievements for ${totalGames} games...`);
 
-        // Process in parallel batches
-        for (let i = 0; i < totalGames; i += CONFIG.ACHIEVEMENT_PARALLEL) {
-            const batch = gamesWithPlaytime.slice(i, i + CONFIG.ACHIEVEMENT_PARALLEL);
-
-            // Fetch batch in parallel
-            const batchPromises = batch.map(game => fetchGameAchievements(game.appid));
-            const batchResults = await Promise.all(batchPromises);
-
-            // Process results and update UI
-            batchResults.forEach((achData, idx) => {
-                const game = batch[idx];
-                processed++;
-
-                if (achData && achData.total > 0) {
-                    totalAchievements += achData.achieved;
-                    totalPossible += achData.total;
-                    gamesWithAchievements++;
-
-                    if (achData.achieved === achData.total) {
-                        perfectGames++;
-                    }
-
-                    // Update game in state
-                    const gameIndex = state.allGames.findIndex(g => g.appid === game.appid);
-                    if (gameIndex !== -1) {
-                        state.allGames[gameIndex].achievements = achData;
-                    }
+        try {
+            // Process in parallel batches
+            for (let i = 0; i < totalGames; i += CONFIG.ACHIEVEMENT_PARALLEL) {
+                // Check if this fetch was cancelled (new fetch started)
+                if (fetchId !== state.achievementFetchId) {
+                    console.log('Achievement fetch cancelled (stale)');
+                    return;
                 }
-            });
 
-            // Update profile stats
-            if (state.data) {
-                state.data.totalAchievements = totalAchievements;
-                state.data.totalPossibleAchievements = totalPossible;
-                state.data.perfectGames = perfectGames;
-                state.data.gamesWithAchievements = gamesWithAchievements;
-                state.data.avgAchievementCompletion = gamesWithAchievements > 0
-                    ? (totalAchievements / totalPossible) * 100
-                    : 0;
+                const batch = gamesWithPlaytime.slice(i, i + CONFIG.ACHIEVEMENT_PARALLEL);
 
-                // Update achievement stats in UI
-                updateAchievementStats();
+                // Fetch batch in parallel
+                const batchPromises = batch.map(game => fetchGameAchievements(game.appid));
+                const batchResults = await Promise.all(batchPromises);
+
+                // Check again after async operation
+                if (fetchId !== state.achievementFetchId) {
+                    console.log('Achievement fetch cancelled (stale)');
+                    return;
+                }
+
+                // Process results and update UI
+                batchResults.forEach((achData, idx) => {
+                    const game = batch[idx];
+
+                    if (achData && achData.total > 0) {
+                        totalAchievements += achData.achieved;
+                        totalPossible += achData.total;
+                        gamesWithAchievements++;
+
+                        if (achData.achieved === achData.total) {
+                            perfectGames++;
+                        }
+
+                        // Update game in state
+                        const gameIndex = state.allGames.findIndex(g => g.appid === game.appid);
+                        if (gameIndex !== -1) {
+                            state.allGames[gameIndex].achievements = achData;
+                        }
+                    }
+                });
+
+                // Update profile stats
+                if (state.data) {
+                    state.data.totalAchievements = totalAchievements;
+                    state.data.totalPossibleAchievements = totalPossible;
+                    state.data.perfectGames = perfectGames;
+                    state.data.gamesWithAchievements = gamesWithAchievements;
+                    state.data.avgAchievementCompletion = gamesWithAchievements > 0
+                        ? (totalAchievements / totalPossible) * 100
+                        : 0;
+
+                    // Update achievement stats in UI
+                    updateAchievementStats();
+                }
+
+                // Re-render games list to show new achievement data
+                renderGamesList();
+
+                // Small delay between batches
+                if (i + CONFIG.ACHIEVEMENT_PARALLEL < totalGames) {
+                    await sleep(CONFIG.ACHIEVEMENT_DELAY);
+                }
             }
 
-            // Re-render games list to show new achievement data
-            renderGamesList();
-
-            // Small delay between batches
-            if (i + CONFIG.ACHIEVEMENT_PARALLEL < totalGames) {
-                await sleep(CONFIG.ACHIEVEMENT_DELAY);
+            // Only show completion toast if this fetch wasn't cancelled
+            if (fetchId === state.achievementFetchId) {
+                showToast(`Achievements loaded: ${totalAchievements} unlocked`, 'success');
+            }
+        } catch (error) {
+            console.error('Error fetching achievements:', error);
+            if (fetchId === state.achievementFetchId) {
+                showToast('Failed to load some achievements', 'error');
+            }
+        } finally {
+            if (fetchId === state.achievementFetchId) {
+                state.isFetchingAchievements = false;
             }
         }
-
-        showToast(`Achievements loaded: ${totalAchievements} unlocked`, 'success');
     }
 
     async function fetchGameAchievements(appid) {
@@ -493,6 +560,24 @@
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
+    // Fetch with timeout to prevent hanging requests
+    async function fetchWithTimeout(url, timeoutMs = 15000) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+        try {
+            const response = await fetch(url, { signal: controller.signal });
+            clearTimeout(timeoutId);
+            return response;
+        } catch (error) {
+            clearTimeout(timeoutId);
+            if (error.name === 'AbortError') {
+                throw new Error('Request timeout');
+            }
+            throw error;
+        }
+    }
+
     function getOnlineState(state) {
         const states = ['offline', 'online', 'busy', 'away', 'snooze', 'looking-to-trade', 'looking-to-play'];
         return states[state] || 'offline';
@@ -508,12 +593,24 @@
         const proxyUrl = CONFIG.CORS_PROXY + encodeURIComponent(steamUrl);
 
         try {
-            const response = await fetch(proxyUrl);
+            const response = await fetchWithTimeout(proxyUrl, 20000);
             if (!response.ok) throw new Error('Network error');
 
             const text = await response.text();
+
+            // Check for empty response
+            if (!text || text.trim() === '') {
+                throw new Error('Empty response from Steam');
+            }
+
             const parser = new DOMParser();
             const xml = parser.parseFromString(text, 'text/xml');
+
+            // Check for XML parse errors
+            const parseError = xml.querySelector('parsererror');
+            if (parseError) {
+                throw new Error('Invalid response format');
+            }
 
             const error = xml.querySelector('error');
             if (error) {
@@ -528,7 +625,7 @@
 
         } catch (error) {
             console.error('Fetch error:', error);
-            showError(error.message);
+            showError(error.message || 'Failed to load profile');
             playSound('error');
         }
     }
@@ -591,10 +688,14 @@
     }
 
     function renderProfile(profile, isApiMode) {
-        // Avatar
+        // Avatar with error handling
         elements.avatar.classList.remove('loading');
-        elements.avatar.src = profile.avatar;
         elements.avatar.alt = `${profile.steamId}'s avatar`;
+        elements.avatar.onerror = () => {
+            // Fallback to a default avatar if loading fails
+            elements.avatar.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect fill="%23333" width="100" height="100"/><text x="50" y="60" text-anchor="middle" fill="%23666" font-size="40">?</text></svg>';
+        };
+        elements.avatar.src = profile.avatar || '';
 
         // Username
         elements.username.textContent = profile.steamId;
@@ -1003,20 +1104,25 @@
             elements.settingsApplyBtn.classList.add('loading');
         }
 
-        const idChanged = changeSteamId(newSteamId);
-        const keyChanged = newApiKey !== state.apiKey;
-        setApiKey(newApiKey);
+        try {
+            const idChanged = changeSteamId(newSteamId);
+            const keyChanged = newApiKey !== state.apiKey;
+            setApiKey(newApiKey);
 
-        closeAllOverlays();
+            closeAllOverlays();
 
-        if (idChanged || keyChanged) {
-            await fetchData();
-            showToast('Settings saved');
-        }
-
-        // Remove button loading state
-        if (elements.settingsApplyBtn) {
-            elements.settingsApplyBtn.classList.remove('loading');
+            if (idChanged || keyChanged) {
+                await fetchData();
+                showToast('Settings saved');
+            }
+        } catch (error) {
+            console.error('Failed to apply settings:', error);
+            showToast('Failed to save settings', 'error');
+        } finally {
+            // Always remove button loading state
+            if (elements.settingsApplyBtn) {
+                elements.settingsApplyBtn.classList.remove('loading');
+            }
         }
     }
 
