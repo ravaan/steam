@@ -38,17 +38,17 @@
         </header>
 
         <!-- Stats Grid -->
-        <section class="stats-grid" aria-label="Gaming statistics">
+        <section class="stats-grid" id="statsGrid" aria-label="Gaming statistics">
             <div class="stat-card">
                 <span class="stat-label">Status</span>
                 <span id="onlineStatus" class="stat-value">--</span>
             </div>
             <div class="stat-card">
-                <span class="stat-label">Top Games</span>
+                <span class="stat-label">Games Owned</span>
                 <span id="gamesCount" class="stat-value">--</span>
             </div>
             <div class="stat-card">
-                <span class="stat-label">Total Hours</span>
+                <span class="stat-label">All-Time Hours</span>
                 <span id="totalHours" class="stat-value">--</span>
             </div>
             <div class="stat-card">
@@ -57,12 +57,35 @@
             </div>
         </section>
 
-        <!-- Recent Games -->
-        <section class="recent-games" aria-label="Recently played games">
-            <h2 class="section-title">Recently Played</h2>
+        <!-- Extended Stats (API only) -->
+        <section class="extended-stats" id="extendedStats" aria-label="Extended statistics">
+            <div class="stat-row">
+                <span class="stat-row-label">Average per game</span>
+                <span id="avgHours" class="stat-row-value">--</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-row-label">Most played</span>
+                <span id="mostPlayed" class="stat-row-value">--</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-row-label">Perfect games</span>
+                <span id="perfectGames" class="stat-row-value">--</span>
+            </div>
+        </section>
+
+        <!-- Games Section -->
+        <section class="games-section" aria-label="Games library">
+            <div class="section-header">
+                <h2 class="section-title">Games</h2>
+                <div class="sort-toggle" id="sortToggle">
+                    <button class="sort-btn active" data-sort="alltime">All-Time</button>
+                    <button class="sort-btn" data-sort="recent">Recent</button>
+                </div>
+            </div>
             <div id="gamesList" class="games-list">
                 <!-- Games will be rendered here -->
             </div>
+            <button class="show-more-btn" id="showMoreBtn">Show more</button>
         </section>
 
         <!-- Refresh Indicator -->
@@ -86,7 +109,7 @@
                 <li><kbd>T</kbd> Toggle theme</li>
                 <li><kbd>S</kbd> Toggle sound</li>
                 <li><kbd>R</kbd> Refresh data</li>
-                <li><kbd>I</kbd> Change Steam ID</li>
+                <li><kbd>I</kbd> Settings</li>
                 <li><kbd>?</kbd> Show this help</li>
                 <li><kbd>Esc</kbd> Close overlay</li>
             </ul>
@@ -96,15 +119,49 @@
 
     <!-- Settings Overlay -->
     <div id="settingsOverlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
-        <div class="overlay-content">
-            <h2 id="settingsTitle" class="overlay-title">Change Steam Profile</h2>
-            <p class="overlay-desc">Enter a Steam64 ID to view a different profile</p>
-            <input type="text" id="steamIdInput" class="steam-input" placeholder="76561198123404228" aria-label="Steam ID">
+        <div class="overlay-content settings-content">
+            <h2 id="settingsTitle" class="overlay-title">Settings</h2>
+
+            <!-- Steam ID Section -->
+            <div class="settings-section">
+                <label class="settings-label">Steam ID</label>
+                <input type="text" id="steamIdInput" class="steam-input" placeholder="76561198123404228" aria-label="Steam ID">
+                <p class="input-hint">Find your ID at <a href="https://steamid.io" target="_blank" rel="noopener">steamid.io</a></p>
+            </div>
+
+            <!-- API Key Section -->
+            <div class="settings-section">
+                <label class="settings-label">
+                    API Key <span class="optional-badge">optional</span>
+                </label>
+                <input type="password" id="apiKeyInput" class="steam-input" placeholder="Enter Steam Web API key" aria-label="Steam API Key">
+                <p class="input-hint">
+                    Get free key at <a href="https://steamcommunity.com/dev/apikey" target="_blank" rel="noopener">Steam Dev</a>
+                    <span class="hint-separator">|</span>
+                    Enables full stats
+                </p>
+                <div class="api-status" id="apiStatus">
+                    <span class="api-status-dot"></span>
+                    <span class="api-status-text">Basic mode</span>
+                </div>
+            </div>
+
             <div class="overlay-buttons">
                 <button class="btn btn-secondary" id="settingsCancel">Cancel</button>
-                <button class="btn btn-primary" id="settingsApply">Apply</button>
+                <button class="btn btn-primary" id="settingsApply">Save</button>
             </div>
-            <p class="overlay-hint">Find your Steam64 ID at <a href="https://steamid.io" target="_blank" rel="noopener">steamid.io</a></p>
+        </div>
+    </div>
+
+    <!-- API Key Prompt Overlay -->
+    <div id="apiKeyPrompt" class="overlay" role="dialog" aria-modal="true" aria-labelledby="apiPromptTitle">
+        <div class="overlay-content">
+            <h2 id="apiPromptTitle" class="overlay-title">API Key Invalid</h2>
+            <p class="overlay-desc">Your Steam API key appears to be invalid or expired. Would you like to update it?</p>
+            <div class="overlay-buttons">
+                <button class="btn btn-secondary" id="apiPromptSkip">Use Basic Mode</button>
+                <button class="btn btn-primary" id="apiPromptUpdate">Update Key</button>
+            </div>
         </div>
     </div>
 

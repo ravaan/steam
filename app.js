@@ -1,6 +1,6 @@
 /**
  * Steam Gaming Dashboard
- * A minimal gaming activity dashboard displaying Steam profile data
+ * A minimal gaming activity dashboard with optional API support
  */
 (function() {
     'use strict';
@@ -11,8 +11,10 @@
     const CONFIG = {
         DEFAULT_STEAM_ID: '76561198123404228',
         CORS_PROXY: 'https://api.allorigins.win/raw?url=',
-        REFRESH_INTERVAL: 5 * 60 * 1000, // 5 minutes
-        TOAST_DURATION: 3000
+        REFRESH_INTERVAL: 5 * 60 * 1000,
+        TOAST_DURATION: 3000,
+        GAMES_PER_PAGE: 5,
+        STEAM_API_BASE: 'https://api.steampowered.com'
     };
 
     // ===================
@@ -20,13 +22,19 @@
     // ===================
     const state = {
         steamId: null,
+        apiKey: null,
+        apiMode: false,
         theme: 'dark',
         soundEnabled: true,
         audioContext: null,
         refreshTimer: null,
         refreshCountdown: 300,
         helpBuffer: '',
-        data: null
+        data: null,
+        allGames: [],
+        gamesExpanded: false,
+        sortBy: 'alltime',
+        apiFailCount: 0
     };
 
     // ===================
@@ -35,25 +43,7 @@
     const $ = (selector) => document.querySelector(selector);
     const $$ = (selector) => document.querySelectorAll(selector);
 
-    const elements = {
-        themeToggle: null,
-        soundToggle: null,
-        avatar: null,
-        username: null,
-        statusText: null,
-        statusIndicator: null,
-        onlineStatus: null,
-        totalHours: null,
-        gamesCount: null,
-        recentHours: null,
-        gamesList: null,
-        refreshTimer: null,
-        refreshIndicator: null,
-        helpOverlay: null,
-        settingsOverlay: null,
-        steamIdInput: null,
-        toastContainer: null
-    };
+    const elements = {};
 
     // ===================
     // Initialization
@@ -61,10 +51,11 @@
     function init() {
         cacheElements();
         initSteamId();
+        initApiKey();
         initTheme();
         initSound();
         bindEvents();
-        fetchSteamData();
+        fetchData();
         startRefreshTimer();
     }
 
@@ -79,12 +70,20 @@
         elements.totalHours = $('#totalHours');
         elements.gamesCount = $('#gamesCount');
         elements.recentHours = $('#recentHours');
+        elements.avgHours = $('#avgHours');
+        elements.mostPlayed = $('#mostPlayed');
+        elements.perfectGames = $('#perfectGames');
+        elements.extendedStats = $('#extendedStats');
         elements.gamesList = $('#gamesList');
+        elements.showMoreBtn = $('#showMoreBtn');
+        elements.sortToggle = $('#sortToggle');
         elements.refreshTimer = $('#refreshTimer');
-        elements.refreshIndicator = $('#refreshIndicator');
         elements.helpOverlay = $('#helpOverlay');
         elements.settingsOverlay = $('#settingsOverlay');
+        elements.apiKeyPrompt = $('#apiKeyPrompt');
         elements.steamIdInput = $('#steamIdInput');
+        elements.apiKeyInput = $('#apiKeyInput');
+        elements.apiStatus = $('#apiStatus');
         elements.toastContainer = $('#toastContainer');
     }
 
@@ -93,7 +92,7 @@
     // ===================
     function initSteamId() {
         const urlParams = new URLSearchParams(window.location.search);
-        state.steamId = urlParams.get('id') || CONFIG.DEFAULT_STEAM_ID;
+        state.steamId = urlParams.get('id') || localStorage.getItem('steam-dashboard-id') || CONFIG.DEFAULT_STEAM_ID;
         if (elements.steamIdInput) {
             elements.steamIdInput.value = state.steamId;
         }
@@ -102,13 +101,14 @@
     function changeSteamId(newId) {
         if (!newId || newId.trim() === '') {
             showToast('Please enter a valid Steam ID', 'error');
-            return;
+            return false;
         }
 
         newId = newId.trim();
         state.steamId = newId;
+        localStorage.setItem('steam-dashboard-id', newId);
 
-        // Update URL without reload
+        // Update URL
         const url = new URL(window.location);
         if (newId === CONFIG.DEFAULT_STEAM_ID) {
             url.searchParams.delete('id');
@@ -117,10 +117,349 @@
         }
         window.history.pushState({}, '', url);
 
-        // Refresh data
-        fetchSteamData();
-        showToast('Loading new profile...');
-        closeAllOverlays();
+        return true;
+    }
+
+    // ===================
+    // API Key Management
+    // ===================
+    function initApiKey() {
+        state.apiKey = localStorage.getItem('steam-dashboard-apikey') || null;
+        state.apiMode = !!state.apiKey;
+        updateApiModeUI();
+
+        if (elements.apiKeyInput && state.apiKey) {
+            elements.apiKeyInput.value = state.apiKey;
+        }
+    }
+
+    function setApiKey(key) {
+        if (key && key.trim()) {
+            state.apiKey = key.trim();
+            localStorage.setItem('steam-dashboard-apikey', state.apiKey);
+            state.apiMode = true;
+            state.apiFailCount = 0;
+        } else {
+            state.apiKey = null;
+            localStorage.removeItem('steam-dashboard-apikey');
+            state.apiMode = false;
+        }
+        updateApiModeUI();
+    }
+
+    function updateApiModeUI() {
+        document.documentElement.setAttribute('data-api-mode', state.apiMode);
+
+        if (elements.apiStatus) {
+            elements.apiStatus.classList.toggle('active', state.apiMode);
+            elements.apiStatus.querySelector('.api-status-text').textContent =
+                state.apiMode ? 'API mode active' : 'Basic mode';
+        }
+
+        if (elements.extendedStats) {
+            elements.extendedStats.classList.toggle('visible', state.apiMode);
+        }
+    }
+
+    // ===================
+    // Data Fetching
+    // ===================
+    async function fetchData() {
+        showLoading();
+
+        if (state.apiMode && state.apiKey) {
+            try {
+                await fetchWithApi();
+                return;
+            } catch (error) {
+                console.warn('API fetch failed, falling back to XML:', error);
+                state.apiFailCount++;
+
+                if (state.apiFailCount >= 2) {
+                    showApiKeyPrompt();
+                } else {
+                    showToast('API error, using basic mode', 'error');
+                }
+            }
+        }
+
+        // Fallback to XML
+        await fetchWithXml();
+    }
+
+    async function fetchWithApi() {
+        // Fetch owned games (all-time stats)
+        const ownedGamesUrl = `${CONFIG.STEAM_API_BASE}/IPlayerService/GetOwnedGames/v1/?key=${state.apiKey}&steamid=${state.steamId}&include_appinfo=1&include_played_free_games=1`;
+        const playerUrl = `${CONFIG.STEAM_API_BASE}/ISteamUser/GetPlayerSummaries/v2/?key=${state.apiKey}&steamids=${state.steamId}`;
+
+        const [ownedRes, playerRes] = await Promise.all([
+            fetch(CONFIG.CORS_PROXY + encodeURIComponent(ownedGamesUrl)),
+            fetch(CONFIG.CORS_PROXY + encodeURIComponent(playerUrl))
+        ]);
+
+        if (!ownedRes.ok || !playerRes.ok) {
+            throw new Error('API request failed');
+        }
+
+        const ownedData = await ownedRes.json();
+        const playerData = await playerRes.json();
+
+        if (!ownedData.response || !playerData.response) {
+            throw new Error('Invalid API response');
+        }
+
+        const player = playerData.response.players?.[0];
+        if (!player) {
+            throw new Error('Player not found');
+        }
+
+        const games = ownedData.response.games || [];
+
+        // Calculate stats
+        let totalMinutes = 0;
+        let recentMinutes = 0;
+
+        games.forEach(game => {
+            totalMinutes += game.playtime_forever || 0;
+            recentMinutes += game.playtime_2weeks || 0;
+        });
+
+        // Sort games by all-time playtime
+        const sortedGames = [...games].sort((a, b) =>
+            (b.playtime_forever || 0) - (a.playtime_forever || 0)
+        );
+
+        state.allGames = sortedGames.map(game => ({
+            appid: game.appid,
+            name: game.name,
+            icon: game.img_icon_url ?
+                `https://media.steampowered.com/steamcommunity/public/images/apps/${game.appid}/${game.img_icon_url}.jpg` : '',
+            hoursTotal: (game.playtime_forever || 0) / 60,
+            hoursRecent: (game.playtime_2weeks || 0) / 60,
+            link: `https://store.steampowered.com/app/${game.appid}`
+        }));
+
+        const profile = {
+            steamId64: player.steamid,
+            steamId: player.personaname,
+            avatar: player.avatarfull || player.avatarmedium || player.avatar,
+            onlineState: getOnlineState(player.personastate),
+            stateMessage: player.gameextrainfo ? `Playing ${player.gameextrainfo}` : getStateMessage(player.personastate),
+            totalGames: games.length,
+            totalHours: totalMinutes / 60,
+            recentHours: recentMinutes / 60,
+            avgHours: games.length > 0 ? (totalMinutes / 60) / games.length : 0,
+            mostPlayed: sortedGames[0]?.name || 'N/A',
+            mostPlayedHours: sortedGames[0] ? (sortedGames[0].playtime_forever || 0) / 60 : 0
+        };
+
+        state.data = profile;
+        renderProfile(profile, true);
+        playSound('refresh');
+    }
+
+    function getOnlineState(state) {
+        const states = ['offline', 'online', 'busy', 'away', 'snooze', 'looking-to-trade', 'looking-to-play'];
+        return states[state] || 'offline';
+    }
+
+    function getStateMessage(state) {
+        const messages = ['Offline', 'Online', 'Busy', 'Away', 'Snooze', 'Looking to Trade', 'Looking to Play'];
+        return messages[state] || 'Offline';
+    }
+
+    async function fetchWithXml() {
+        const steamUrl = `https://steamcommunity.com/profiles/${state.steamId}/?xml=1`;
+        const proxyUrl = CONFIG.CORS_PROXY + encodeURIComponent(steamUrl);
+
+        try {
+            const response = await fetch(proxyUrl);
+            if (!response.ok) throw new Error('Network error');
+
+            const text = await response.text();
+            const parser = new DOMParser();
+            const xml = parser.parseFromString(text, 'text/xml');
+
+            const error = xml.querySelector('error');
+            if (error) {
+                throw new Error(error.textContent || 'Profile not found');
+            }
+
+            const profile = parseXmlProfile(xml);
+            state.data = profile;
+            state.allGames = profile.games || [];
+            renderProfile(profile, false);
+            playSound('refresh');
+
+        } catch (error) {
+            console.error('Fetch error:', error);
+            showError(error.message);
+            playSound('error');
+        }
+    }
+
+    function parseXmlProfile(xml) {
+        const getText = (selector) => {
+            const el = xml.querySelector(selector);
+            return el ? el.textContent : '';
+        };
+
+        const profile = {
+            steamId64: getText('steamID64'),
+            steamId: getText('steamID'),
+            avatar: getText('avatarFull') || getText('avatarMedium') || getText('avatarIcon'),
+            onlineState: getText('onlineState'),
+            stateMessage: getText('stateMessage'),
+            games: [],
+            totalGames: 0,
+            totalHours: 0,
+            recentHours: 0
+        };
+
+        const gameNodes = xml.querySelectorAll('mostPlayedGames mostPlayedGame');
+        let totalHours = 0;
+        let recentHours = 0;
+
+        gameNodes.forEach(node => {
+            const hoursPlayed = parseFloat(node.querySelector('hoursPlayed')?.textContent || '0');
+            const hoursOnRecord = parseFloat(node.querySelector('hoursOnRecord')?.textContent?.replace(',', '') || '0');
+
+            profile.games.push({
+                name: node.querySelector('gameName')?.textContent || 'Unknown Game',
+                link: node.querySelector('gameLink')?.textContent || '#',
+                icon: node.querySelector('gameIcon')?.textContent || '',
+                hoursTotal: hoursOnRecord,
+                hoursRecent: hoursPlayed
+            });
+
+            totalHours += hoursOnRecord;
+            recentHours += hoursPlayed;
+        });
+
+        profile.totalGames = gameNodes.length;
+        profile.totalHours = totalHours;
+        profile.recentHours = recentHours;
+
+        state.allGames = profile.games;
+
+        return profile;
+    }
+
+    // ===================
+    // Rendering
+    // ===================
+    function showLoading() {
+        elements.avatar.classList.add('loading');
+        elements.avatar.src = '';
+        elements.username.textContent = 'Loading...';
+        elements.statusText.textContent = 'Fetching profile data...';
+    }
+
+    function renderProfile(profile, isApiMode) {
+        // Avatar
+        elements.avatar.classList.remove('loading');
+        elements.avatar.src = profile.avatar;
+        elements.avatar.alt = `${profile.steamId}'s avatar`;
+
+        // Username
+        elements.username.textContent = profile.steamId;
+        document.title = `${profile.steamId} - Steam Dashboard`;
+
+        // Status
+        const isOnline = profile.onlineState === 'online' || profile.onlineState === 'in-game';
+        const isInGame = profile.onlineState === 'in-game' || profile.stateMessage?.startsWith('Playing');
+
+        elements.statusText.textContent = profile.stateMessage || profile.onlineState;
+        elements.statusIndicator.className = 'status-indicator';
+        if (isInGame) {
+            elements.statusIndicator.classList.add('in-game');
+        } else if (isOnline) {
+            elements.statusIndicator.classList.add('online');
+        }
+
+        // Main Stats
+        elements.onlineStatus.textContent = capitalizeFirst(profile.onlineState) || '--';
+        elements.gamesCount.textContent = profile.totalGames > 0 ? formatNumber(profile.totalGames) : '--';
+        elements.totalHours.textContent = profile.totalHours > 0 ? formatNumber(Math.round(profile.totalHours)) : '--';
+        elements.recentHours.textContent = profile.recentHours > 0 ? profile.recentHours.toFixed(1) : '--';
+
+        // Extended Stats (API mode only)
+        if (isApiMode && profile.avgHours !== undefined) {
+            elements.avgHours.textContent = profile.avgHours > 0 ? profile.avgHours.toFixed(1) + 'h' : '--';
+            elements.mostPlayed.textContent = profile.mostPlayed || '--';
+            elements.perfectGames.textContent = '--'; // Would need additional API calls
+            elements.extendedStats.classList.add('visible');
+        } else {
+            elements.extendedStats.classList.remove('visible');
+        }
+
+        // Games list
+        renderGamesList();
+    }
+
+    function renderGamesList() {
+        const games = getSortedGames();
+        const displayCount = state.gamesExpanded ? games.length : CONFIG.GAMES_PER_PAGE;
+        const gamesToShow = games.slice(0, displayCount);
+
+        if (!gamesToShow || gamesToShow.length === 0) {
+            elements.gamesList.innerHTML = '<div class="no-games">No games found</div>';
+            elements.showMoreBtn.classList.remove('visible');
+            return;
+        }
+
+        elements.gamesList.innerHTML = gamesToShow.map(game => `
+            <a href="${escapeHtml(game.link)}" target="_blank" rel="noopener" class="game-item">
+                <img class="game-icon" src="${escapeHtml(game.icon)}" alt="${escapeHtml(game.name)}" loading="lazy" onerror="this.style.display='none'">
+                <div class="game-info">
+                    <div class="game-name">${escapeHtml(game.name)}</div>
+                    <div class="game-hours">
+                        ${state.sortBy === 'recent' ?
+                            `<span class="game-hours-value">${game.hoursRecent?.toFixed(1) || 0}h</span> last 2 weeks` :
+                            `<span class="game-hours-value">${formatNumber(Math.round(game.hoursTotal || 0))}h</span> total`
+                        }
+                    </div>
+                </div>
+            </a>
+        `).join('');
+
+        // Show/hide "show more" button
+        if (games.length > CONFIG.GAMES_PER_PAGE) {
+            elements.showMoreBtn.classList.add('visible');
+            elements.showMoreBtn.textContent = state.gamesExpanded ?
+                'Show less' : `Show ${games.length - CONFIG.GAMES_PER_PAGE} more`;
+        } else {
+            elements.showMoreBtn.classList.remove('visible');
+        }
+    }
+
+    function getSortedGames() {
+        if (!state.allGames || state.allGames.length === 0) return [];
+
+        return [...state.allGames].sort((a, b) => {
+            if (state.sortBy === 'recent') {
+                return (b.hoursRecent || 0) - (a.hoursRecent || 0);
+            }
+            return (b.hoursTotal || 0) - (a.hoursTotal || 0);
+        });
+    }
+
+    function showError(message) {
+        elements.avatar.classList.remove('loading');
+        elements.username.textContent = 'Error';
+        elements.statusText.textContent = message;
+        elements.onlineStatus.textContent = '--';
+        elements.totalHours.textContent = '--';
+        elements.gamesCount.textContent = '--';
+        elements.recentHours.textContent = '--';
+        elements.gamesList.innerHTML = `
+            <div class="error-state">
+                <h2>Could not load profile</h2>
+                <p>${escapeHtml(message)}</p>
+                <p>Make sure the Steam profile is public.</p>
+            </div>
+        `;
+        showToast(message, 'error');
     }
 
     // ===================
@@ -130,11 +469,8 @@
         const saved = localStorage.getItem('steam-dashboard-theme');
         if (saved) {
             state.theme = saved;
-        } else {
-            // Check system preference
-            if (window.matchMedia('(prefers-color-scheme: light)').matches) {
-                state.theme = 'light';
-            }
+        } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
+            state.theme = 'light';
         }
         applyTheme();
     }
@@ -162,15 +498,9 @@
         icon.className = 'icon';
 
         switch(state.theme) {
-            case 'dark':
-                icon.classList.add('moon');
-                break;
-            case 'light':
-                icon.classList.add('sun');
-                break;
-            case 'steam':
-                icon.classList.add('steam');
-                break;
+            case 'dark': icon.classList.add('moon'); break;
+            case 'light': icon.classList.add('sun'); break;
+            case 'steam': icon.classList.add('steam'); break;
         }
     }
 
@@ -188,9 +518,7 @@
         localStorage.setItem('steam-dashboard-sound', state.soundEnabled);
         updateSoundIcon();
 
-        if (state.soundEnabled) {
-            playSound('theme');
-        }
+        if (state.soundEnabled) playSound('theme');
         showToast(`Sound: ${state.soundEnabled ? 'On' : 'Off'}`);
     }
 
@@ -217,15 +545,9 @@
             const ctx = state.audioContext;
 
             switch(type) {
-                case 'theme':
-                    playChime(ctx);
-                    break;
-                case 'refresh':
-                    playWhoosh(ctx);
-                    break;
-                case 'error':
-                    playError(ctx);
-                    break;
+                case 'theme': playChime(ctx); break;
+                case 'refresh': playWhoosh(ctx); break;
+                case 'error': playError(ctx); break;
             }
         } catch (e) {
             console.warn('Sound playback failed:', e);
@@ -237,8 +559,8 @@
         const gain = ctx.createGain();
 
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(523.25, ctx.currentTime); // C5
-        osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.1); // E5
+        osc.frequency.setValueAtTime(523.25, ctx.currentTime);
+        osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.1);
 
         gain.gain.setValueAtTime(0.1, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
@@ -291,180 +613,20 @@
     }
 
     // ===================
-    // Data Fetching
-    // ===================
-    async function fetchSteamData() {
-        showLoading();
-
-        const steamUrl = `https://steamcommunity.com/profiles/${state.steamId}/?xml=1`;
-        const proxyUrl = CONFIG.CORS_PROXY + encodeURIComponent(steamUrl);
-
-        try {
-            const response = await fetch(proxyUrl);
-            if (!response.ok) throw new Error('Network error');
-
-            const text = await response.text();
-            const parser = new DOMParser();
-            const xml = parser.parseFromString(text, 'text/xml');
-
-            // Check for errors
-            const error = xml.querySelector('error');
-            if (error) {
-                throw new Error(error.textContent || 'Profile not found');
-            }
-
-            const profile = parseProfileData(xml);
-            state.data = profile;
-            renderProfile(profile);
-            playSound('refresh');
-
-        } catch (error) {
-            console.error('Fetch error:', error);
-            showError(error.message);
-            playSound('error');
-        }
-    }
-
-    function parseProfileData(xml) {
-        const getText = (selector) => {
-            const el = xml.querySelector(selector);
-            return el ? el.textContent : '';
-        };
-
-        const profile = {
-            steamId64: getText('steamID64'),
-            steamId: getText('steamID'),
-            avatar: getText('avatarFull') || getText('avatarMedium') || getText('avatarIcon'),
-            onlineState: getText('onlineState'),
-            stateMessage: getText('stateMessage'),
-            games: []
-        };
-
-        // Parse most played games
-        const gameNodes = xml.querySelectorAll('mostPlayedGames mostPlayedGame');
-        let totalHours = 0;
-        let recentHours = 0;
-
-        gameNodes.forEach(node => {
-            const hoursPlayed = parseFloat(node.querySelector('hoursPlayed')?.textContent || '0');
-            const hoursOnRecord = parseFloat(node.querySelector('hoursOnRecord')?.textContent || '0');
-
-            profile.games.push({
-                name: node.querySelector('gameName')?.textContent || 'Unknown Game',
-                link: node.querySelector('gameLink')?.textContent || '#',
-                icon: node.querySelector('gameIcon')?.textContent || '',
-                hoursPlayed: hoursPlayed,
-                hoursOnRecord: hoursOnRecord
-            });
-
-            totalHours += hoursOnRecord;
-            recentHours += hoursPlayed;
-        });
-
-        profile.totalHours = totalHours;
-        profile.recentHours = recentHours;
-        profile.gamesCount = gameNodes.length;
-
-        return profile;
-    }
-
-    // ===================
-    // Rendering
-    // ===================
-    function showLoading() {
-        elements.avatar.classList.add('loading');
-        elements.avatar.src = '';
-        elements.username.textContent = 'Loading...';
-        elements.statusText.textContent = 'Fetching profile data...';
-    }
-
-    function renderProfile(profile) {
-        // Avatar
-        elements.avatar.classList.remove('loading');
-        elements.avatar.src = profile.avatar;
-        elements.avatar.alt = `${profile.steamId}'s avatar`;
-
-        // Username
-        elements.username.textContent = profile.steamId;
-        document.title = `${profile.steamId} - Steam Dashboard`;
-
-        // Status
-        const isOnline = profile.onlineState === 'online';
-        const isInGame = profile.onlineState === 'in-game';
-
-        elements.statusText.textContent = profile.stateMessage || profile.onlineState;
-        elements.statusIndicator.className = 'status-indicator';
-        if (isInGame) {
-            elements.statusIndicator.classList.add('in-game');
-        } else if (isOnline) {
-            elements.statusIndicator.classList.add('online');
-        }
-
-        // Stats
-        elements.onlineStatus.textContent = capitalizeFirst(profile.onlineState) || '--';
-        elements.totalHours.textContent = profile.totalHours > 0 ? formatNumber(profile.totalHours) : '--';
-        elements.gamesCount.textContent = profile.gamesCount > 0 ? profile.gamesCount : '--';
-        elements.recentHours.textContent = profile.recentHours > 0 ? profile.recentHours.toFixed(1) : '--';
-
-        // Games list
-        renderGamesList(profile.games);
-    }
-
-    function renderGamesList(games) {
-        if (!games || games.length === 0) {
-            elements.gamesList.innerHTML = '<div class="no-games">No recent games found</div>';
-            return;
-        }
-
-        elements.gamesList.innerHTML = games.map(game => `
-            <a href="${escapeHtml(game.link)}" target="_blank" rel="noopener" class="game-item">
-                <img class="game-icon" src="${escapeHtml(game.icon)}" alt="${escapeHtml(game.name)}" loading="lazy">
-                <div class="game-info">
-                    <div class="game-name">${escapeHtml(game.name)}</div>
-                    <div class="game-hours">
-                        <span class="game-hours-value">${game.hoursPlayed.toFixed(1)}h</span> last 2 weeks
-                        &middot; ${formatNumber(game.hoursOnRecord)}h total
-                    </div>
-                </div>
-            </a>
-        `).join('');
-    }
-
-    function showError(message) {
-        elements.avatar.classList.remove('loading');
-        elements.username.textContent = 'Error';
-        elements.statusText.textContent = message;
-        elements.onlineStatus.textContent = '--';
-        elements.totalHours.textContent = '--';
-        elements.gamesCount.textContent = '--';
-        elements.recentHours.textContent = '--';
-        elements.gamesList.innerHTML = `
-            <div class="error-state">
-                <h2>Could not load profile</h2>
-                <p>${escapeHtml(message)}</p>
-                <p>Make sure the Steam profile is public.</p>
-            </div>
-        `;
-        showToast(message, 'error');
-    }
-
-    // ===================
     // Refresh Timer
     // ===================
     function startRefreshTimer() {
         state.refreshCountdown = 300;
         updateRefreshDisplay();
 
-        if (state.refreshTimer) {
-            clearInterval(state.refreshTimer);
-        }
+        if (state.refreshTimer) clearInterval(state.refreshTimer);
 
         state.refreshTimer = setInterval(() => {
             state.refreshCountdown--;
             updateRefreshDisplay();
 
             if (state.refreshCountdown <= 0) {
-                fetchSteamData();
+                fetchData();
                 state.refreshCountdown = 300;
             }
         }, 1000);
@@ -477,7 +639,7 @@
     }
 
     function manualRefresh() {
-        fetchSteamData();
+        fetchData();
         state.refreshCountdown = 300;
         showToast('Refreshing...');
     }
@@ -492,14 +654,34 @@
 
     function openSettings() {
         elements.steamIdInput.value = state.steamId;
+        elements.apiKeyInput.value = state.apiKey || '';
         elements.settingsOverlay.classList.add('active');
         elements.steamIdInput.focus();
-        elements.steamIdInput.select();
+    }
+
+    function showApiKeyPrompt() {
+        elements.apiKeyPrompt.classList.add('active');
     }
 
     function closeAllOverlays() {
         elements.helpOverlay.classList.remove('active');
         elements.settingsOverlay.classList.remove('active');
+        elements.apiKeyPrompt.classList.remove('active');
+    }
+
+    function applySettings() {
+        const newSteamId = elements.steamIdInput.value;
+        const newApiKey = elements.apiKeyInput.value;
+
+        const idChanged = changeSteamId(newSteamId);
+        setApiKey(newApiKey);
+
+        closeAllOverlays();
+
+        if (idChanged || newApiKey !== state.apiKey) {
+            fetchData();
+            showToast('Settings saved');
+        }
     }
 
     // ===================
@@ -533,16 +715,39 @@
 
         // Settings overlay
         $('#settingsCancel').addEventListener('click', closeAllOverlays);
-        $('#settingsApply').addEventListener('click', () => {
-            changeSteamId(elements.steamIdInput.value);
-        });
+        $('#settingsApply').addEventListener('click', applySettings);
         elements.settingsOverlay.addEventListener('click', (e) => {
             if (e.target === elements.settingsOverlay) closeAllOverlays();
         });
-        elements.steamIdInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                changeSteamId(elements.steamIdInput.value);
+
+        // API key prompt
+        $('#apiPromptSkip').addEventListener('click', () => {
+            setApiKey(null);
+            closeAllOverlays();
+            fetchData();
+        });
+        $('#apiPromptUpdate').addEventListener('click', () => {
+            closeAllOverlays();
+            openSettings();
+        });
+
+        // Sort toggle
+        elements.sortToggle.addEventListener('click', (e) => {
+            if (e.target.classList.contains('sort-btn')) {
+                const sort = e.target.dataset.sort;
+                if (sort && sort !== state.sortBy) {
+                    state.sortBy = sort;
+                    $$('.sort-btn').forEach(btn => btn.classList.remove('active'));
+                    e.target.classList.add('active');
+                    renderGamesList();
+                }
             }
+        });
+
+        // Show more button
+        elements.showMoreBtn.addEventListener('click', () => {
+            state.gamesExpanded = !state.gamesExpanded;
+            renderGamesList();
         });
 
         // Keyboard shortcuts
@@ -556,8 +761,9 @@
     function handleKeydown(e) {
         // Don't trigger shortcuts when typing in input
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-            if (e.key === 'Escape') {
-                closeAllOverlays();
+            if (e.key === 'Escape') closeAllOverlays();
+            if (e.key === 'Enter' && elements.settingsOverlay.classList.contains('active')) {
+                applySettings();
             }
             return;
         }
@@ -576,24 +782,12 @@
         }
 
         switch(e.key.toLowerCase()) {
-            case 't':
-                toggleTheme();
-                break;
-            case 's':
-                toggleSound();
-                break;
-            case 'r':
-                manualRefresh();
-                break;
-            case 'i':
-                openSettings();
-                break;
-            case '?':
-                openHelp();
-                break;
-            case 'escape':
-                closeAllOverlays();
-                break;
+            case 't': toggleTheme(); break;
+            case 's': toggleSound(); break;
+            case 'r': manualRefresh(); break;
+            case 'i': openSettings(); break;
+            case '?': openHelp(); break;
+            case 'escape': closeAllOverlays(); break;
         }
     }
 
