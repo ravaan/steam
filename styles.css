@@ -544,6 +544,13 @@ a {
     color: var(--success);
 }
 
+/* Loading Text Inline */
+.loading-text-inline {
+    color: var(--text-muted);
+    font-size: 0.6875rem;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
 /* Show More Button */
 .show-more-btn {
     display: none;

@@ -15,8 +15,8 @@
         TOAST_DURATION: 3000,
         GAMES_PER_PAGE: 5,
         STEAM_API_BASE: 'https://api.steampowered.com',
-        ACHIEVEMENT_BATCH_SIZE: 5,  // Fetch 5 games at a time
-        ACHIEVEMENT_DELAY: 200      // 200ms delay between batches
+        ACHIEVEMENT_PARALLEL: 10,   // Fetch 10 games in parallel
+        ACHIEVEMENT_DELAY: 100      // 100ms delay between batches
     };
 
     // ===================
@@ -190,7 +190,7 @@
         if (state.apiMode && state.apiKey) {
             try {
                 await fetchWithApi();
-                hideLoadingOverlay();
+                // hideLoadingOverlay is called inside fetchWithApi after basic data loads
                 return;
             } catch (error) {
                 console.warn('API fetch failed, falling back to XML:', error);
@@ -232,23 +232,32 @@
     }
 
     async function fetchWithApi() {
-        updateLoadingText('Fetching games library...');
+        updateLoadingText('Fetching profile data...');
 
-        // Fetch owned games (all-time stats)
+        // Fetch all basic data in parallel
         const ownedGamesUrl = `${CONFIG.STEAM_API_BASE}/IPlayerService/GetOwnedGames/v1/?key=${state.apiKey}&steamid=${state.steamId}&include_appinfo=1&include_played_free_games=1`;
         const playerUrl = `${CONFIG.STEAM_API_BASE}/ISteamUser/GetPlayerSummaries/v2/?key=${state.apiKey}&steamids=${state.steamId}`;
+        const levelUrl = `${CONFIG.STEAM_API_BASE}/IPlayerService/GetSteamLevel/v1/?key=${state.apiKey}&steamid=${state.steamId}`;
+        const badgesUrl = `${CONFIG.STEAM_API_BASE}/IPlayerService/GetBadges/v1/?key=${state.apiKey}&steamid=${state.steamId}`;
+        const friendsUrl = `${CONFIG.STEAM_API_BASE}/ISteamUser/GetFriendList/v1/?key=${state.apiKey}&steamid=${state.steamId}&relationship=friend`;
 
-        const [ownedRes, playerRes] = await Promise.all([
+        // Fetch all basic data in parallel
+        const [ownedRes, playerRes, levelRes, badgesRes, friendsRes] = await Promise.all([
             fetch(CONFIG.CORS_PROXY + encodeURIComponent(ownedGamesUrl)),
-            fetch(CONFIG.CORS_PROXY + encodeURIComponent(playerUrl))
+            fetch(CONFIG.CORS_PROXY + encodeURIComponent(playerUrl)),
+            fetch(CONFIG.CORS_PROXY + encodeURIComponent(levelUrl)).catch(() => null),
+            fetch(CONFIG.CORS_PROXY + encodeURIComponent(badgesUrl)).catch(() => null),
+            fetch(CONFIG.CORS_PROXY + encodeURIComponent(friendsUrl)).catch(() => null)
         ]);
 
         if (!ownedRes.ok || !playerRes.ok) {
             throw new Error('API request failed');
         }
 
-        const ownedData = await ownedRes.json();
-        const playerData = await playerRes.json();
+        const [ownedData, playerData] = await Promise.all([
+            ownedRes.json(),
+            playerRes.json()
+        ]);
 
         if (!ownedData.response || !playerData.response) {
             throw new Error('Invalid API response');
@@ -259,62 +268,67 @@
             throw new Error('Player not found');
         }
 
+        // Parse extra data
+        let extraData = { level: null, xp: null, badges: null, friends: null };
+        try {
+            if (levelRes?.ok) {
+                const levelData = await levelRes.json();
+                extraData.level = levelData.response?.player_level;
+            }
+        } catch (e) {}
+        try {
+            if (badgesRes?.ok) {
+                const badgesData = await badgesRes.json();
+                extraData.badges = badgesData.response?.badges?.length || 0;
+                extraData.xp = badgesData.response?.player_xp || null;
+            }
+        } catch (e) {}
+        try {
+            if (friendsRes?.ok) {
+                const friendsData = await friendsRes.json();
+                extraData.friends = friendsData.friendslist?.friends?.length || 0;
+            }
+        } catch (e) {}
+
         const games = ownedData.response.games || [];
 
-        // Fetch additional API data
-        updateLoadingText('Fetching level & badges...');
-        const extraData = await fetchExtraApiData();
-
-        // Calculate stats
+        // Calculate basic stats
         let totalMinutes = 0;
         let recentMinutes = 0;
-        let playedGames = 0;
-        let unplayedGames = 0;
+        let playedGamesCount = 0;
+        let unplayedGamesCount = 0;
 
         games.forEach(game => {
             totalMinutes += game.playtime_forever || 0;
             recentMinutes += game.playtime_2weeks || 0;
             if ((game.playtime_forever || 0) > 0) {
-                playedGames++;
+                playedGamesCount++;
             } else {
-                unplayedGames++;
+                unplayedGamesCount++;
             }
         });
-
-        // Fetch achievements for all played games
-        updateLoadingText('Fetching achievements...');
-        const achievementData = await fetchAchievementsForGames(games);
 
         // Sort games by all-time playtime
         const sortedGames = [...games].sort((a, b) =>
             (b.playtime_forever || 0) - (a.playtime_forever || 0)
         );
 
-        state.allGames = sortedGames.map(game => {
-            const achData = achievementData.gameAchievements[game.appid];
-            return {
-                appid: game.appid,
-                name: game.name,
-                icon: game.img_icon_url ?
-                    `https://media.steampowered.com/steamcommunity/public/images/apps/${game.appid}/${game.img_icon_url}.jpg` : '',
-                hoursTotal: (game.playtime_forever || 0) / 60,
-                hoursRecent: (game.playtime_2weeks || 0) / 60,
-                link: `https://store.steampowered.com/app/${game.appid}`,
-                achievements: achData ? achData : null
-            };
-        });
+        // Build initial games list (without achievements)
+        state.allGames = sortedGames.map(game => ({
+            appid: game.appid,
+            name: game.name,
+            icon: game.img_icon_url ?
+                `https://media.steampowered.com/steamcommunity/public/images/apps/${game.appid}/${game.img_icon_url}.jpg` : '',
+            hoursTotal: (game.playtime_forever || 0) / 60,
+            hoursRecent: (game.playtime_2weeks || 0) / 60,
+            link: `https://store.steampowered.com/app/${game.appid}`,
+            achievements: null
+        }));
 
-        // Calculate completion rate (games played / total games)
-        const completionRate = games.length > 0 ? (playedGames / games.length) * 100 : 0;
-
-        // Estimate account value (rough estimate: $10 per game average)
+        const completionRate = games.length > 0 ? (playedGamesCount / games.length) * 100 : 0;
         const accountValue = games.length * 10;
 
-        // Calculate average achievement completion
-        const avgAchievementCompletion = achievementData.gamesWithAchievements > 0
-            ? (achievementData.totalAchievements / achievementData.totalPossible) * 100
-            : 0;
-
+        // Build initial profile (without achievements)
         const profile = {
             steamId64: player.steamid,
             steamId: player.personaname,
@@ -327,121 +341,103 @@
             avgHours: games.length > 0 ? (totalMinutes / 60) / games.length : 0,
             mostPlayed: sortedGames[0]?.name || 'N/A',
             mostPlayedHours: sortedGames[0] ? (sortedGames[0].playtime_forever || 0) / 60 : 0,
-            playedGames: playedGames,
-            unplayedGames: unplayedGames,
+            playedGames: playedGamesCount,
+            unplayedGames: unplayedGamesCount,
             completionRate: completionRate,
             accountValue: accountValue,
-            // Extra API data
             steamLevel: extraData.level,
             totalXP: extraData.xp,
             badgeCount: extraData.badges,
             friendCount: extraData.friends,
-            // Achievement data
-            totalAchievements: achievementData.totalAchievements,
-            totalPossibleAchievements: achievementData.totalPossible,
-            perfectGames: achievementData.perfectGames,
-            gamesWithAchievements: achievementData.gamesWithAchievements,
-            avgAchievementCompletion: avgAchievementCompletion
+            // Achievement data (loading)
+            totalAchievements: null,
+            totalPossibleAchievements: null,
+            perfectGames: null,
+            gamesWithAchievements: null,
+            avgAchievementCompletion: null
         };
 
         state.data = profile;
+
+        // Render immediately with basic data
         renderProfile(profile, true);
+        hideLoadingOverlay();
         playSound('refresh');
+
+        // Fetch achievements in background
+        fetchAchievementsInBackground(games);
     }
 
-    async function fetchExtraApiData() {
-        const result = {
-            level: null,
-            xp: null,
-            badges: null,
-            friends: null
-        };
-
-        try {
-            // Fetch Steam Level
-            const levelUrl = `${CONFIG.STEAM_API_BASE}/IPlayerService/GetSteamLevel/v1/?key=${state.apiKey}&steamid=${state.steamId}`;
-            const levelRes = await fetch(CONFIG.CORS_PROXY + encodeURIComponent(levelUrl));
-            if (levelRes.ok) {
-                const levelData = await levelRes.json();
-                result.level = levelData.response?.player_level;
-            }
-        } catch (e) {
-            console.warn('Failed to fetch Steam level:', e);
-        }
-
-        try {
-            // Fetch Badges
-            const badgesUrl = `${CONFIG.STEAM_API_BASE}/IPlayerService/GetBadges/v1/?key=${state.apiKey}&steamid=${state.steamId}`;
-            const badgesRes = await fetch(CONFIG.CORS_PROXY + encodeURIComponent(badgesUrl));
-            if (badgesRes.ok) {
-                const badgesData = await badgesRes.json();
-                result.badges = badgesData.response?.badges?.length || 0;
-                result.xp = badgesData.response?.player_xp || null;
-            }
-        } catch (e) {
-            console.warn('Failed to fetch badges:', e);
-        }
-
-        try {
-            // Fetch Friend Count
-            const friendsUrl = `${CONFIG.STEAM_API_BASE}/ISteamUser/GetFriendList/v1/?key=${state.apiKey}&steamid=${state.steamId}&relationship=friend`;
-            const friendsRes = await fetch(CONFIG.CORS_PROXY + encodeURIComponent(friendsUrl));
-            if (friendsRes.ok) {
-                const friendsData = await friendsRes.json();
-                result.friends = friendsData.friendslist?.friends?.length || 0;
-            }
-        } catch (e) {
-            // Friends list may be private
-            console.warn('Failed to fetch friends (may be private):', e);
-        }
-
-        return result;
-    }
-
-    async function fetchAchievementsForGames(games) {
-        const results = {
-            totalAchievements: 0,
-            totalPossible: 0,
-            perfectGames: 0,
-            gamesWithAchievements: 0,
-            gameAchievements: {}  // appid -> { achieved, total, percent }
-        };
-
+    async function fetchAchievementsInBackground(games) {
         const gamesWithPlaytime = games.filter(g => (g.playtime_forever || 0) > 0);
         const totalGames = gamesWithPlaytime.length;
 
-        // Process in batches
-        for (let i = 0; i < totalGames; i += CONFIG.ACHIEVEMENT_BATCH_SIZE) {
-            const batch = gamesWithPlaytime.slice(i, i + CONFIG.ACHIEVEMENT_BATCH_SIZE);
-            const progress = Math.round(((i + batch.length) / totalGames) * 100);
-            updateLoadingText(`Fetching achievements... ${progress}% (${i + batch.length}/${totalGames})`);
+        if (totalGames === 0) return;
+
+        // Achievement stats accumulator
+        let totalAchievements = 0;
+        let totalPossible = 0;
+        let perfectGames = 0;
+        let gamesWithAchievements = 0;
+        let processed = 0;
+
+        // Show loading indicator for achievements
+        showToast(`Loading achievements for ${totalGames} games...`);
+
+        // Process in parallel batches
+        for (let i = 0; i < totalGames; i += CONFIG.ACHIEVEMENT_PARALLEL) {
+            const batch = gamesWithPlaytime.slice(i, i + CONFIG.ACHIEVEMENT_PARALLEL);
 
             // Fetch batch in parallel
             const batchPromises = batch.map(game => fetchGameAchievements(game.appid));
             const batchResults = await Promise.all(batchPromises);
 
-            // Process results
+            // Process results and update UI
             batchResults.forEach((achData, idx) => {
                 const game = batch[idx];
+                processed++;
+
                 if (achData && achData.total > 0) {
-                    results.totalAchievements += achData.achieved;
-                    results.totalPossible += achData.total;
-                    results.gamesWithAchievements++;
-                    results.gameAchievements[game.appid] = achData;
+                    totalAchievements += achData.achieved;
+                    totalPossible += achData.total;
+                    gamesWithAchievements++;
 
                     if (achData.achieved === achData.total) {
-                        results.perfectGames++;
+                        perfectGames++;
+                    }
+
+                    // Update game in state
+                    const gameIndex = state.allGames.findIndex(g => g.appid === game.appid);
+                    if (gameIndex !== -1) {
+                        state.allGames[gameIndex].achievements = achData;
                     }
                 }
             });
 
-            // Small delay between batches to avoid rate limiting
-            if (i + CONFIG.ACHIEVEMENT_BATCH_SIZE < totalGames) {
+            // Update profile stats
+            if (state.data) {
+                state.data.totalAchievements = totalAchievements;
+                state.data.totalPossibleAchievements = totalPossible;
+                state.data.perfectGames = perfectGames;
+                state.data.gamesWithAchievements = gamesWithAchievements;
+                state.data.avgAchievementCompletion = gamesWithAchievements > 0
+                    ? (totalAchievements / totalPossible) * 100
+                    : 0;
+
+                // Update achievement stats in UI
+                updateAchievementStats();
+            }
+
+            // Re-render games list to show new achievement data
+            renderGamesList();
+
+            // Small delay between batches
+            if (i + CONFIG.ACHIEVEMENT_PARALLEL < totalGames) {
                 await sleep(CONFIG.ACHIEVEMENT_DELAY);
             }
         }
 
-        return results;
+        showToast(`Achievements loaded: ${totalAchievements} unlocked`, 'success');
     }
 
     async function fetchGameAchievements(appid) {
@@ -466,8 +462,27 @@
                 percent: total > 0 ? Math.round((achieved / total) * 100) : 0
             };
         } catch (e) {
-            // Game may not have achievements or API error
             return null;
+        }
+    }
+
+    function updateAchievementStats() {
+        const profile = state.data;
+        if (!profile) return;
+
+        if (elements.totalAchievements) {
+            const achText = profile.totalAchievements != null
+                ? `${formatNumber(profile.totalAchievements)} / ${formatNumber(profile.totalPossibleAchievements)}`
+                : '--';
+            elements.totalAchievements.textContent = achText;
+        }
+        if (elements.perfectGames) {
+            elements.perfectGames.textContent = profile.perfectGames != null ? profile.perfectGames : '--';
+        }
+        if (elements.avgCompletion) {
+            elements.avgCompletion.textContent = profile.avgAchievementCompletion != null
+                ? profile.avgAchievementCompletion.toFixed(1) + '%'
+                : '--';
         }
     }
 
@@ -643,20 +658,27 @@
             if (elements.accountValue) {
                 elements.accountValue.textContent = profile.accountValue != null ? '$' + formatNumber(profile.accountValue) : '--';
             }
-            // Achievement stats
+            // Achievement stats (show "Loading..." if null, which means background fetch in progress)
             if (elements.totalAchievements) {
-                const achText = profile.totalAchievements != null
-                    ? `${formatNumber(profile.totalAchievements)} / ${formatNumber(profile.totalPossibleAchievements)}`
-                    : '--';
-                elements.totalAchievements.textContent = achText;
+                if (profile.totalAchievements != null) {
+                    elements.totalAchievements.textContent = `${formatNumber(profile.totalAchievements)} / ${formatNumber(profile.totalPossibleAchievements)}`;
+                } else {
+                    elements.totalAchievements.innerHTML = '<span class="loading-text-inline">Loading...</span>';
+                }
             }
             if (elements.perfectGames) {
-                elements.perfectGames.textContent = profile.perfectGames != null ? profile.perfectGames : '--';
+                if (profile.perfectGames != null) {
+                    elements.perfectGames.textContent = profile.perfectGames;
+                } else {
+                    elements.perfectGames.innerHTML = '<span class="loading-text-inline">Loading...</span>';
+                }
             }
             if (elements.avgCompletion) {
-                elements.avgCompletion.textContent = profile.avgAchievementCompletion != null
-                    ? profile.avgAchievementCompletion.toFixed(1) + '%'
-                    : '--';
+                if (profile.avgAchievementCompletion != null) {
+                    elements.avgCompletion.textContent = profile.avgAchievementCompletion.toFixed(1) + '%';
+                } else {
+                    elements.avgCompletion.innerHTML = '<span class="loading-text-inline">Loading...</span>';
+                }
             }
             if (elements.extendedStats) {
                 elements.extendedStats.classList.add('visible');
