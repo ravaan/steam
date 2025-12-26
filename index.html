@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="dark" data-api-mode="false">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -23,6 +23,12 @@
 
     <!-- Main Content -->
     <main class="container">
+        <!-- Mode Badge -->
+        <div class="mode-badge" id="modeBadge">
+            <span class="mode-badge-dot"></span>
+            <span class="mode-badge-text">BASIC</span>
+        </div>
+
         <!-- Header -->
         <header class="header">
             <div class="profile-section">
@@ -36,6 +42,32 @@
                 </div>
             </div>
         </header>
+
+        <!-- Loading Overlay -->
+        <div class="loading-overlay" id="loadingOverlay">
+            <div class="loading-spinner"></div>
+            <p class="loading-text" id="loadingText">Loading profile...</p>
+        </div>
+
+        <!-- Profile Stats (API only) -->
+        <section class="profile-stats" id="profileStats">
+            <div class="profile-stat">
+                <span class="profile-stat-value" id="steamLevel">--</span>
+                <span class="profile-stat-label">Level</span>
+            </div>
+            <div class="profile-stat">
+                <span class="profile-stat-value" id="totalXP">--</span>
+                <span class="profile-stat-label">XP</span>
+            </div>
+            <div class="profile-stat">
+                <span class="profile-stat-value" id="badgeCount">--</span>
+                <span class="profile-stat-label">Badges</span>
+            </div>
+            <div class="profile-stat">
+                <span class="profile-stat-value" id="friendCount">--</span>
+                <span class="profile-stat-label">Friends</span>
+            </div>
+        </section>
 
         <!-- Stats Grid -->
         <section class="stats-grid" id="statsGrid" aria-label="Gaming statistics">
@@ -68,8 +100,20 @@
                 <span id="mostPlayed" class="stat-row-value">--</span>
             </div>
             <div class="stat-row">
-                <span class="stat-row-label">Perfect games</span>
-                <span id="perfectGames" class="stat-row-value">--</span>
+                <span class="stat-row-label">Games played (ever)</span>
+                <span id="gamesPlayed" class="stat-row-value">--</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-row-label">Unplayed games</span>
+                <span id="unplayedGames" class="stat-row-value">--</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-row-label">Completion rate</span>
+                <span id="completionRate" class="stat-row-value">--</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-row-label">Account value (est.)</span>
+                <span id="accountValue" class="stat-row-value">--</span>
             </div>
         </section>
 
@@ -132,23 +176,30 @@
             <!-- API Key Section -->
             <div class="settings-section">
                 <label class="settings-label">
-                    API Key <span class="optional-badge">optional</span>
+                    API Key <span class="optional-badge">for full stats</span>
                 </label>
                 <input type="password" id="apiKeyInput" class="steam-input" placeholder="Enter Steam Web API key" aria-label="Steam API Key">
                 <p class="input-hint">
                     Get free key at <a href="https://steamcommunity.com/dev/apikey" target="_blank" rel="noopener">Steam Dev</a>
-                    <span class="hint-separator">|</span>
-                    Enables full stats
                 </p>
-                <div class="api-status" id="apiStatus">
-                    <span class="api-status-dot"></span>
-                    <span class="api-status-text">Basic mode</span>
+                <div class="api-key-info">
+                    <p>With API key you get:</p>
+                    <ul>
+                        <li>Steam Level, XP, Badges</li>
+                        <li>Friends count</li>
+                        <li>All-time hours (entire library)</li>
+                        <li>Full game list with playtime</li>
+                        <li>Unplayed games count</li>
+                    </ul>
                 </div>
             </div>
 
             <div class="overlay-buttons">
                 <button class="btn btn-secondary" id="settingsCancel">Cancel</button>
-                <button class="btn btn-primary" id="settingsApply">Save</button>
+                <button class="btn btn-primary" id="settingsApply">
+                    <span class="btn-text">Save & Load</span>
+                    <span class="btn-spinner"></span>
+                </button>
             </div>
         </div>
     </div>

@@ -72,8 +72,20 @@
         elements.recentHours = $('#recentHours');
         elements.avgHours = $('#avgHours');
         elements.mostPlayed = $('#mostPlayed');
-        elements.perfectGames = $('#perfectGames');
+        elements.gamesPlayed = $('#gamesPlayed');
+        elements.unplayedGames = $('#unplayedGames');
+        elements.completionRate = $('#completionRate');
+        elements.accountValue = $('#accountValue');
         elements.extendedStats = $('#extendedStats');
+        elements.profileStats = $('#profileStats');
+        elements.steamLevel = $('#steamLevel');
+        elements.totalXP = $('#totalXP');
+        elements.badgeCount = $('#badgeCount');
+        elements.friendCount = $('#friendCount');
+        elements.modeBadge = $('#modeBadge');
+        elements.modeBadgeText = $('.mode-badge-text');
+        elements.loadingOverlay = $('#loadingOverlay');
+        elements.loadingText = $('#loadingText');
         elements.gamesList = $('#gamesList');
         elements.showMoreBtn = $('#showMoreBtn');
         elements.sortToggle = $('#sortToggle');
@@ -83,7 +95,7 @@
         elements.apiKeyPrompt = $('#apiKeyPrompt');
         elements.steamIdInput = $('#steamIdInput');
         elements.apiKeyInput = $('#apiKeyInput');
-        elements.apiStatus = $('#apiStatus');
+        elements.settingsApplyBtn = $('#settingsApply');
         elements.toastContainer = $('#toastContainer');
     }
 
@@ -150,14 +162,17 @@
     function updateApiModeUI() {
         document.documentElement.setAttribute('data-api-mode', state.apiMode);
 
-        if (elements.apiStatus) {
-            elements.apiStatus.classList.toggle('active', state.apiMode);
-            elements.apiStatus.querySelector('.api-status-text').textContent =
-                state.apiMode ? 'API mode active' : 'Basic mode';
+        // Update mode badge
+        if (elements.modeBadgeText) {
+            elements.modeBadgeText.textContent = state.apiMode ? 'API MODE' : 'BASIC';
         }
 
+        // Show/hide API-only sections
         if (elements.extendedStats) {
             elements.extendedStats.classList.toggle('visible', state.apiMode);
+        }
+        if (elements.profileStats) {
+            elements.profileStats.classList.toggle('visible', state.apiMode);
         }
     }
 
@@ -165,17 +180,19 @@
     // Data Fetching
     // ===================
     async function fetchData() {
-        showLoading();
+        showLoadingOverlay('Loading profile...');
 
         if (state.apiMode && state.apiKey) {
             try {
                 await fetchWithApi();
+                hideLoadingOverlay();
                 return;
             } catch (error) {
                 console.warn('API fetch failed, falling back to XML:', error);
                 state.apiFailCount++;
 
                 if (state.apiFailCount >= 2) {
+                    hideLoadingOverlay();
                     showApiKeyPrompt();
                 } else {
                     showToast('API error, using basic mode', 'error');
@@ -185,9 +202,33 @@
 
         // Fallback to XML
         await fetchWithXml();
+        hideLoadingOverlay();
+    }
+
+    function showLoadingOverlay(text) {
+        if (elements.loadingOverlay) {
+            elements.loadingOverlay.classList.add('active');
+        }
+        if (elements.loadingText) {
+            elements.loadingText.textContent = text || 'Loading...';
+        }
+    }
+
+    function hideLoadingOverlay() {
+        if (elements.loadingOverlay) {
+            elements.loadingOverlay.classList.remove('active');
+        }
+    }
+
+    function updateLoadingText(text) {
+        if (elements.loadingText) {
+            elements.loadingText.textContent = text;
+        }
     }
 
     async function fetchWithApi() {
+        updateLoadingText('Fetching games library...');
+
         // Fetch owned games (all-time stats)
         const ownedGamesUrl = `${CONFIG.STEAM_API_BASE}/IPlayerService/GetOwnedGames/v1/?key=${state.apiKey}&steamid=${state.steamId}&include_appinfo=1&include_played_free_games=1`;
         const playerUrl = `${CONFIG.STEAM_API_BASE}/ISteamUser/GetPlayerSummaries/v2/?key=${state.apiKey}&steamids=${state.steamId}`;
@@ -215,13 +256,24 @@
 
         const games = ownedData.response.games || [];
 
+        // Fetch additional API data
+        updateLoadingText('Fetching level & badges...');
+        const extraData = await fetchExtraApiData();
+
         // Calculate stats
         let totalMinutes = 0;
         let recentMinutes = 0;
+        let playedGames = 0;
+        let unplayedGames = 0;
 
         games.forEach(game => {
             totalMinutes += game.playtime_forever || 0;
             recentMinutes += game.playtime_2weeks || 0;
+            if ((game.playtime_forever || 0) > 0) {
+                playedGames++;
+            } else {
+                unplayedGames++;
+            }
         });
 
         // Sort games by all-time playtime
@@ -239,6 +291,12 @@
             link: `https://store.steampowered.com/app/${game.appid}`
         }));
 
+        // Calculate completion rate (games played / total games)
+        const completionRate = games.length > 0 ? (playedGames / games.length) * 100 : 0;
+
+        // Estimate account value (rough estimate: $10 per game average)
+        const accountValue = games.length * 10;
+
         const profile = {
             steamId64: player.steamid,
             steamId: player.personaname,
@@ -250,12 +308,70 @@
             recentHours: recentMinutes / 60,
             avgHours: games.length > 0 ? (totalMinutes / 60) / games.length : 0,
             mostPlayed: sortedGames[0]?.name || 'N/A',
-            mostPlayedHours: sortedGames[0] ? (sortedGames[0].playtime_forever || 0) / 60 : 0
+            mostPlayedHours: sortedGames[0] ? (sortedGames[0].playtime_forever || 0) / 60 : 0,
+            playedGames: playedGames,
+            unplayedGames: unplayedGames,
+            completionRate: completionRate,
+            accountValue: accountValue,
+            // Extra API data
+            steamLevel: extraData.level,
+            totalXP: extraData.xp,
+            badgeCount: extraData.badges,
+            friendCount: extraData.friends
         };
 
         state.data = profile;
         renderProfile(profile, true);
         playSound('refresh');
+    }
+
+    async function fetchExtraApiData() {
+        const result = {
+            level: null,
+            xp: null,
+            badges: null,
+            friends: null
+        };
+
+        try {
+            // Fetch Steam Level
+            const levelUrl = `${CONFIG.STEAM_API_BASE}/IPlayerService/GetSteamLevel/v1/?key=${state.apiKey}&steamid=${state.steamId}`;
+            const levelRes = await fetch(CONFIG.CORS_PROXY + encodeURIComponent(levelUrl));
+            if (levelRes.ok) {
+                const levelData = await levelRes.json();
+                result.level = levelData.response?.player_level;
+            }
+        } catch (e) {
+            console.warn('Failed to fetch Steam level:', e);
+        }
+
+        try {
+            // Fetch Badges
+            const badgesUrl = `${CONFIG.STEAM_API_BASE}/IPlayerService/GetBadges/v1/?key=${state.apiKey}&steamid=${state.steamId}`;
+            const badgesRes = await fetch(CONFIG.CORS_PROXY + encodeURIComponent(badgesUrl));
+            if (badgesRes.ok) {
+                const badgesData = await badgesRes.json();
+                result.badges = badgesData.response?.badges?.length || 0;
+                result.xp = badgesData.response?.player_xp || null;
+            }
+        } catch (e) {
+            console.warn('Failed to fetch badges:', e);
+        }
+
+        try {
+            // Fetch Friend Count
+            const friendsUrl = `${CONFIG.STEAM_API_BASE}/ISteamUser/GetFriendList/v1/?key=${state.apiKey}&steamid=${state.steamId}&relationship=friend`;
+            const friendsRes = await fetch(CONFIG.CORS_PROXY + encodeURIComponent(friendsUrl));
+            if (friendsRes.ok) {
+                const friendsData = await friendsRes.json();
+                result.friends = friendsData.friendslist?.friends?.length || 0;
+            }
+        } catch (e) {
+            // Friends list may be private
+            console.warn('Failed to fetch friends (may be private):', e);
+        }
+
+        return result;
     }
 
     function getOnlineState(state) {
@@ -383,14 +499,56 @@
         elements.totalHours.textContent = profile.totalHours > 0 ? formatNumber(Math.round(profile.totalHours)) : '--';
         elements.recentHours.textContent = profile.recentHours > 0 ? profile.recentHours.toFixed(1) : '--';
 
+        // Profile Stats (API mode only - Level, XP, Badges, Friends)
+        if (isApiMode) {
+            if (elements.steamLevel) {
+                elements.steamLevel.textContent = profile.steamLevel != null ? profile.steamLevel : '--';
+            }
+            if (elements.totalXP) {
+                elements.totalXP.textContent = profile.totalXP != null ? formatNumber(profile.totalXP) : '--';
+            }
+            if (elements.badgeCount) {
+                elements.badgeCount.textContent = profile.badgeCount != null ? formatNumber(profile.badgeCount) : '--';
+            }
+            if (elements.friendCount) {
+                elements.friendCount.textContent = profile.friendCount != null ? formatNumber(profile.friendCount) : '--';
+            }
+            if (elements.profileStats) {
+                elements.profileStats.classList.add('visible');
+            }
+        } else {
+            if (elements.profileStats) {
+                elements.profileStats.classList.remove('visible');
+            }
+        }
+
         // Extended Stats (API mode only)
         if (isApiMode && profile.avgHours !== undefined) {
-            elements.avgHours.textContent = profile.avgHours > 0 ? profile.avgHours.toFixed(1) + 'h' : '--';
-            elements.mostPlayed.textContent = profile.mostPlayed || '--';
-            elements.perfectGames.textContent = '--'; // Would need additional API calls
-            elements.extendedStats.classList.add('visible');
+            if (elements.avgHours) {
+                elements.avgHours.textContent = profile.avgHours > 0 ? profile.avgHours.toFixed(1) + 'h' : '--';
+            }
+            if (elements.mostPlayed) {
+                elements.mostPlayed.textContent = profile.mostPlayed || '--';
+            }
+            if (elements.gamesPlayed) {
+                elements.gamesPlayed.textContent = profile.playedGames != null ? formatNumber(profile.playedGames) : '--';
+            }
+            if (elements.unplayedGames) {
+                elements.unplayedGames.textContent = profile.unplayedGames != null ? formatNumber(profile.unplayedGames) : '--';
+            }
+            if (elements.completionRate) {
+                elements.completionRate.textContent = profile.completionRate != null ? profile.completionRate.toFixed(1) + '%' : '--';
+            }
+            if (elements.accountValue) {
+                elements.accountValue.textContent = profile.accountValue != null ? '$' + formatNumber(profile.accountValue) : '--';
+            }
+            if (elements.extendedStats) {
+                elements.extendedStats.classList.add('visible');
+            }
         } else {
-            elements.extendedStats.classList.remove('visible');
+            if (elements.extendedStats) {
+                elements.extendedStats.classList.remove('visible');
+            }
         }
 
         // Games list
@@ -669,18 +827,29 @@
         elements.apiKeyPrompt.classList.remove('active');
     }
 
-    function applySettings() {
+    async function applySettings() {
         const newSteamId = elements.steamIdInput.value;
         const newApiKey = elements.apiKeyInput.value;
 
+        // Show button loading state
+        if (elements.settingsApplyBtn) {
+            elements.settingsApplyBtn.classList.add('loading');
+        }
+
         const idChanged = changeSteamId(newSteamId);
+        const keyChanged = newApiKey !== state.apiKey;
         setApiKey(newApiKey);
 
         closeAllOverlays();
 
-        if (idChanged || newApiKey !== state.apiKey) {
-            fetchData();
+        if (idChanged || keyChanged) {
+            await fetchData();
             showToast('Settings saved');
+        }
+
+        // Remove button loading state
+        if (elements.settingsApplyBtn) {
+            elements.settingsApplyBtn.classList.remove('loading');
         }
     }
 
