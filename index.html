@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="A minimal gaming activity dashboard displaying Steam profile data">
+    <title>Steam Gaming Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Toggle Buttons -->
+    <div class="toggles">
+        <button class="toggle-btn" id="soundToggle" aria-label="Toggle sound" title="Toggle sound (S)">
+            <span class="icon sound-on"></span>
+        </button>
+        <button class="toggle-btn" id="themeToggle" aria-label="Toggle theme" title="Toggle theme (T)">
+            <span class="icon moon"></span>
+        </button>
+    </div>
+
+    <!-- Main Content -->
+    <main class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="profile-section">
+                <div class="avatar-wrapper">
+                    <img id="avatar" class="avatar" src="" alt="Steam Avatar">
+                    <span id="statusIndicator" class="status-indicator"></span>
+                </div>
+                <div class="profile-info">
+                    <h1 class="title">While <span id="username">...</span> is gaming...</h1>
+                    <p id="statusText" class="status-text">Loading...</p>
+                </div>
+            </div>
+        </header>
+
+        <!-- Stats Grid -->
+        <section class="stats-grid" aria-label="Gaming statistics">
+            <div class="stat-card">
+                <span class="stat-label">Status</span>
+                <span id="onlineStatus" class="stat-value">--</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Total Hours</span>
+                <span id="totalHours" class="stat-value">--</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Games Played</span>
+                <span id="gamesCount" class="stat-value">--</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Hours (2 weeks)</span>
+                <span id="recentHours" class="stat-value">--</span>
+            </div>
+        </section>
+
+        <!-- Recent Games -->
+        <section class="recent-games" aria-label="Recently played games">
+            <h2 class="section-title">Recently Played</h2>
+            <div id="gamesList" class="games-list">
+                <!-- Games will be rendered here -->
+            </div>
+        </section>
+
+        <!-- Refresh Indicator -->
+        <div class="refresh-indicator" id="refreshIndicator">
+            <span class="refresh-text">Auto-refresh in <span id="refreshTimer">5:00</span></span>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <span class="footer-text">Made with &#9829; while gaming</span>
+        <span class="footer-divider">&middot;</span>
+        <span class="footer-hint">Press <kbd>?</kbd> for help</span>
+    </footer>
+
+    <!-- Help Overlay -->
+    <div id="helpOverlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+        <div class="overlay-content">
+            <h2 id="helpTitle" class="overlay-title">Keyboard Shortcuts</h2>
+            <ul class="shortcuts-list">
+                <li><kbd>T</kbd> Toggle theme</li>
+                <li><kbd>S</kbd> Toggle sound</li>
+                <li><kbd>R</kbd> Refresh data</li>
+                <li><kbd>I</kbd> Change Steam ID</li>
+                <li><kbd>?</kbd> Show this help</li>
+                <li><kbd>Esc</kbd> Close overlay</li>
+            </ul>
+            <button class="overlay-close" id="helpClose" aria-label="Close help">Close</button>
+        </div>
+    </div>
+
+    <!-- Settings Overlay -->
+    <div id="settingsOverlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+        <div class="overlay-content">
+            <h2 id="settingsTitle" class="overlay-title">Change Steam Profile</h2>
+            <p class="overlay-desc">Enter a Steam64 ID to view a different profile</p>
+            <input type="text" id="steamIdInput" class="steam-input" placeholder="76561198123404228" aria-label="Steam ID">
+            <div class="overlay-buttons">
+                <button class="btn btn-secondary" id="settingsCancel">Cancel</button>
+                <button class="btn btn-primary" id="settingsApply">Apply</button>
+            </div>
+            <p class="overlay-hint">Find your Steam64 ID at <a href="https://steamid.io" target="_blank" rel="noopener">steamid.io</a></p>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>

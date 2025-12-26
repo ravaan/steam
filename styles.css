@@ -1,0 +1,767 @@
+/* CSS Variables - Themes */
+:root {
+    --bg: #1b2838;
+    --bg-card: #16202d;
+    --text: #c7d5e0;
+    --text-muted: #8f98a0;
+    --accent: #66c0f4;
+    --accent-hover: #4fa3d4;
+    --border: #2a475e;
+    --success: #5ba32b;
+    --error: #c83c3c;
+    --transition-speed: 0.3s;
+    --font-mono: 'Space Mono', 'Roboto Mono', 'Consolas', monospace;
+}
+
+[data-theme="light"] {
+    --bg: #f5f5f5;
+    --bg-card: #ffffff;
+    --text: #1b2838;
+    --text-muted: #666666;
+    --accent: #1a9fff;
+    --accent-hover: #0d8de8;
+    --border: #e0e0e0;
+}
+
+[data-theme="steam"] {
+    --bg: #1b2838;
+    --bg-card: #16202d;
+    --text: #c7d5e0;
+    --text-muted: #8f98a0;
+    --accent: #66c0f4;
+    --accent-hover: #4fa3d4;
+    --border: #2a475e;
+}
+
+/* Reset & Base */
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html {
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+    font-family: var(--font-mono);
+    background-color: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    transition: background-color var(--transition-speed), color var(--transition-speed);
+    line-height: 1.6;
+}
+
+/* Selection */
+::selection {
+    background: var(--text);
+    color: var(--bg);
+}
+
+::-moz-selection {
+    background: var(--text);
+    color: var(--bg);
+}
+
+/* Toggle Buttons */
+.toggles {
+    position: fixed;
+    top: 1.5rem;
+    right: 1.5rem;
+    display: flex;
+    gap: 0.75rem;
+    z-index: 100;
+    user-select: none;
+}
+
+.toggle-btn {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: 2px solid var(--text-muted);
+    background: transparent;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-speed);
+    color: var(--text);
+}
+
+.toggle-btn:hover {
+    border-color: var(--text);
+    transform: scale(1.05);
+}
+
+.toggle-btn:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(102, 192, 244, 0.3);
+}
+
+/* CSS Icons */
+.icon {
+    width: 24px;
+    height: 24px;
+    position: relative;
+    display: block;
+    transition: transform var(--transition-speed), opacity var(--transition-speed);
+}
+
+/* Moon Icon */
+.icon.moon::before {
+    content: '';
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--text);
+    border-radius: 50%;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: inset 6px -2px 0 0 var(--text);
+}
+
+/* Sun Icon */
+.icon.sun::before {
+    content: '';
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    background: var(--text);
+    border-radius: 50%;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow:
+        0 -10px 0 -3px var(--text),
+        0 10px 0 -3px var(--text),
+        -10px 0 0 -3px var(--text),
+        10px 0 0 -3px var(--text),
+        -7px -7px 0 -3px var(--text),
+        7px 7px 0 -3px var(--text),
+        -7px 7px 0 -3px var(--text),
+        7px -7px 0 -3px var(--text);
+}
+
+/* Steam Icon */
+.icon.steam::before {
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--text);
+    border-radius: 50%;
+    top: 4px;
+    left: 5px;
+}
+
+.icon.steam::after {
+    content: '';
+    position: absolute;
+    width: 2px;
+    height: 10px;
+    background: var(--text);
+    bottom: 2px;
+    left: 11px;
+    transform: rotate(-30deg);
+    border-radius: 1px;
+}
+
+/* Sound On Icon (Musical Note) */
+.icon.sound-on::before {
+    content: '';
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    background: var(--text);
+    border-radius: 50%;
+    bottom: 4px;
+    left: 4px;
+}
+
+.icon.sound-on::after {
+    content: '';
+    position: absolute;
+    width: 2px;
+    height: 14px;
+    background: var(--text);
+    bottom: 8px;
+    left: 10px;
+    border-radius: 1px;
+}
+
+/* Sound Off Icon (Muted) */
+.icon.sound-off::before {
+    content: '';
+    position: absolute;
+    width: 6px;
+    height: 10px;
+    background: var(--text);
+    top: 7px;
+    left: 5px;
+    border-radius: 2px;
+}
+
+.icon.sound-off::after {
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 2px;
+    background: var(--error);
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-45deg);
+    border-radius: 1px;
+}
+
+/* Container */
+.container {
+    max-width: 800px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 4rem 1.5rem 2rem;
+    flex: 1;
+}
+
+/* Header */
+.header {
+    margin-bottom: 3rem;
+    text-align: center;
+}
+
+.profile-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.avatar-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+.avatar {
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    border: 3px solid var(--border);
+    transition: border-color var(--transition-speed);
+    object-fit: cover;
+    background: var(--bg-card);
+}
+
+.avatar.loading {
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.status-indicator {
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 3px solid var(--bg);
+    background: var(--text-muted);
+}
+
+.status-indicator.online {
+    background: var(--success);
+}
+
+.status-indicator.in-game {
+    background: var(--accent);
+}
+
+.title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 0.5rem;
+}
+
+.status-text {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+}
+
+/* Stats Grid */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+    margin-bottom: 3rem;
+}
+
+.stat-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.5rem;
+    text-align: center;
+    transition: all var(--transition-speed);
+}
+
+.stat-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+}
+
+.stat-label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+}
+
+.stat-value {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--accent);
+}
+
+/* Recent Games */
+.section-title {
+    font-size: 1rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.games-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.game-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    transition: all var(--transition-speed);
+}
+
+.game-item:hover {
+    border-color: var(--accent);
+    transform: translateX(4px);
+}
+
+.game-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 4px;
+    object-fit: cover;
+    background: var(--border);
+}
+
+.game-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.game-name {
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 0.25rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.game-hours {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+}
+
+.game-hours-value {
+    color: var(--accent);
+}
+
+/* No Games State */
+.no-games {
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-muted);
+}
+
+/* Refresh Indicator */
+.refresh-indicator {
+    text-align: center;
+    margin-top: 2rem;
+    padding: 0.75rem;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.refresh-text {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Footer */
+.footer {
+    text-align: center;
+    padding: 1.5rem;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    user-select: none;
+}
+
+.footer-divider {
+    margin: 0 0.5rem;
+}
+
+.footer kbd {
+    display: inline-block;
+    padding: 0.15rem 0.4rem;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+}
+
+/* Overlay */
+.overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity var(--transition-speed), visibility var(--transition-speed);
+    z-index: 1000;
+    padding: 1rem;
+}
+
+.overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.overlay-content {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 2rem;
+    max-width: 400px;
+    width: 100%;
+    text-align: center;
+    transform: scale(0.9);
+    transition: transform var(--transition-speed);
+}
+
+.overlay.active .overlay-content {
+    transform: scale(1);
+}
+
+.overlay-title {
+    font-size: 1.25rem;
+    margin-bottom: 1.5rem;
+    color: var(--text);
+}
+
+.overlay-desc {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+}
+
+.overlay-hint {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 1rem;
+}
+
+.overlay-hint a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+.overlay-hint a:hover {
+    text-decoration: underline;
+}
+
+/* Shortcuts List */
+.shortcuts-list {
+    list-style: none;
+    text-align: left;
+    margin-bottom: 1.5rem;
+}
+
+.shortcuts-list li {
+    padding: 0.5rem 0;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.shortcuts-list li:last-child {
+    border-bottom: none;
+}
+
+.shortcuts-list kbd {
+    display: inline-block;
+    min-width: 32px;
+    padding: 0.25rem 0.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    text-align: center;
+}
+
+/* Buttons */
+.btn {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    padding: 0.75rem 1.5rem;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    transition: all var(--transition-speed);
+}
+
+.btn-primary {
+    background: var(--accent);
+    color: var(--bg);
+}
+
+.btn-primary:hover {
+    background: var(--accent-hover);
+}
+
+.btn-secondary {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+    border-color: var(--text);
+}
+
+.overlay-close {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    padding: 0.75rem 2rem;
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background var(--transition-speed);
+}
+
+.overlay-close:hover {
+    background: var(--accent-hover);
+}
+
+.overlay-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+}
+
+/* Input */
+.steam-input {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    font-family: var(--font-mono);
+    font-size: 1rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    margin-bottom: 1rem;
+    text-align: center;
+    transition: border-color var(--transition-speed);
+}
+
+.steam-input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.steam-input::placeholder {
+    color: var(--text-muted);
+}
+
+/* Toast */
+.toast-container {
+    position: fixed;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    pointer-events: none;
+}
+
+.toast {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem 1.5rem;
+    font-size: 0.875rem;
+    color: var(--text);
+    animation: toastIn 0.3s ease, toastOut 0.3s ease 2.7s forwards;
+    pointer-events: auto;
+}
+
+.toast.error {
+    border-color: var(--error);
+    color: var(--error);
+}
+
+.toast.success {
+    border-color: var(--success);
+    color: var(--success);
+}
+
+@keyframes toastIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes toastOut {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+}
+
+/* Loading State */
+.loading-skeleton {
+    background: linear-gradient(90deg, var(--bg-card) 25%, var(--border) 50%, var(--bg-card) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 4px;
+}
+
+@keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* Error State */
+.error-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--text-muted);
+}
+
+.error-state h2 {
+    color: var(--error);
+    margin-bottom: 1rem;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+    .container {
+        padding: 5rem 1rem 1.5rem;
+    }
+
+    .toggles {
+        top: 1rem;
+        right: 1rem;
+    }
+
+    .toggle-btn {
+        width: 40px;
+        height: 40px;
+    }
+
+    .avatar {
+        width: 72px;
+        height: 72px;
+    }
+
+    .title {
+        font-size: 1.25rem;
+    }
+
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .stat-value {
+        font-size: 1.25rem;
+    }
+
+    .game-icon {
+        width: 40px;
+        height: 40px;
+    }
+
+    .overlay-content {
+        padding: 1.5rem;
+    }
+}
+
+@media (max-width: 400px) {
+    .title {
+        font-size: 1rem;
+    }
+
+    .footer {
+        font-size: 0.65rem;
+    }
+}
+
+/* Focus Visible for Accessibility */
+.toggle-btn:focus-visible,
+.btn:focus-visible,
+.overlay-close:focus-visible,
+.steam-input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* Reduce Motion */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
