@@ -6,6 +6,276 @@
     'use strict';
 
     // ===================
+    // Analytics (Mixpanel)
+    // ===================
+    const Analytics = {
+        // Session tracking
+        sessionStart: Date.now(),
+        pageLoadTime: null,
+
+        // Check if Mixpanel is available
+        isAvailable() {
+            return typeof mixpanel !== 'undefined' && mixpanel.track;
+        },
+
+        // Track an event with standard properties
+        track(eventName, properties = {}) {
+            if (!this.isAvailable()) return;
+
+            const enrichedProps = {
+                ...properties,
+                // Add context
+                session_duration_seconds: Math.floor((Date.now() - this.sessionStart) / 1000),
+                api_mode: state.apiMode,
+                theme: state.theme,
+                sound_enabled: state.soundEnabled,
+                steam_id_set: !!state.steamId && state.steamId !== CONFIG.DEFAULT_STEAM_ID,
+                timestamp: new Date().toISOString()
+            };
+
+            mixpanel.track(eventName, enrichedProps);
+        },
+
+        // Identify user (using Steam ID hash for privacy)
+        identify(steamId) {
+            if (!this.isAvailable() || !steamId) return;
+
+            // Hash the Steam ID for privacy
+            const distinctId = this.hashString(steamId);
+            mixpanel.identify(distinctId);
+
+            // Set user profile properties
+            mixpanel.people.set({
+                'Steam ID Hash': distinctId,
+                'API Mode': state.apiMode,
+                'Theme Preference': state.theme,
+                'Sound Enabled': state.soundEnabled,
+                'Last Seen': new Date().toISOString()
+            });
+        },
+
+        // Simple hash function for privacy
+        hashString(str) {
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) {
+                const char = str.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash;
+            }
+            return 'user_' + Math.abs(hash).toString(36);
+        },
+
+        // Set super properties (attached to all events)
+        setSuperProperties() {
+            if (!this.isAvailable()) return;
+
+            mixpanel.register({
+                'Platform': navigator.platform,
+                'Screen Width': window.screen.width,
+                'Screen Height': window.screen.height,
+                'Viewport Width': window.innerWidth,
+                'Viewport Height': window.innerHeight,
+                'Language': navigator.language,
+                'Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone
+            });
+        },
+
+        // ==================
+        // Event Tracking Methods
+        // ==================
+
+        // Page & Session Events
+        trackPageView() {
+            this.pageLoadTime = performance.now();
+            this.track('Page Viewed', {
+                referrer: document.referrer || 'direct',
+                url_params: window.location.search ? 'yes' : 'no',
+                has_steam_id_param: new URLSearchParams(window.location.search).has('id')
+            });
+        },
+
+        trackSessionStart() {
+            this.track('Session Started', {
+                entry_type: document.referrer ? 'referral' : 'direct',
+                has_saved_settings: !!(localStorage.getItem('steam-dashboard-id') || localStorage.getItem('steam-dashboard-apikey'))
+            });
+        },
+
+        // Profile Loading Events
+        trackProfileLoadStarted(mode) {
+            mixpanel.time_event('Profile Loaded');
+            this.track('Profile Load Started', {
+                load_mode: mode // 'api' or 'xml'
+            });
+        },
+
+        trackProfileLoadCompleted(profile, mode, loadTimeMs) {
+            this.track('Profile Loaded', {
+                load_mode: mode,
+                load_time_ms: Math.round(loadTimeMs),
+                total_games: profile.totalGames || 0,
+                total_hours: Math.round(profile.totalHours || 0),
+                online_status: profile.onlineState,
+                has_recent_activity: (profile.recentHours || 0) > 0,
+                steam_level: profile.steamLevel || null,
+                friend_count: profile.friendCount || null
+            });
+
+            // Update user profile with gaming stats
+            if (this.isAvailable()) {
+                mixpanel.people.set({
+                    'Total Games': profile.totalGames || 0,
+                    'Total Hours': Math.round(profile.totalHours || 0),
+                    'Steam Level': profile.steamLevel || null,
+                    'Last Profile Load': new Date().toISOString()
+                });
+
+                mixpanel.people.increment('Profile Loads');
+            }
+        },
+
+        trackProfileLoadFailed(error, mode) {
+            this.track('Profile Load Failed', {
+                load_mode: mode,
+                error_message: error.message || 'Unknown error',
+                error_type: error.name || 'Error'
+            });
+        },
+
+        // Achievement Events
+        trackAchievementsFetchStarted(gameCount) {
+            mixpanel.time_event('Achievements Loaded');
+            this.track('Achievements Fetch Started', {
+                games_to_fetch: gameCount
+            });
+        },
+
+        trackAchievementsLoaded(stats) {
+            this.track('Achievements Loaded', {
+                total_achievements: stats.totalAchievements,
+                total_possible: stats.totalPossible,
+                perfect_games: stats.perfectGames,
+                games_with_achievements: stats.gamesWithAchievements,
+                completion_rate: stats.avgCompletion ? stats.avgCompletion.toFixed(1) : null
+            });
+        },
+
+        // User Interaction Events
+        trackThemeChanged(newTheme, previousTheme) {
+            this.track('Theme Changed', {
+                new_theme: newTheme,
+                previous_theme: previousTheme
+            });
+
+            if (this.isAvailable()) {
+                mixpanel.people.set({ 'Theme Preference': newTheme });
+            }
+        },
+
+        trackSoundToggled(enabled) {
+            this.track('Sound Toggled', {
+                sound_enabled: enabled
+            });
+
+            if (this.isAvailable()) {
+                mixpanel.people.set({ 'Sound Enabled': enabled });
+            }
+        },
+
+        trackSettingsOpened() {
+            this.track('Settings Opened');
+        },
+
+        trackSettingsSaved(changes) {
+            this.track('Settings Saved', {
+                steam_id_changed: changes.steamIdChanged,
+                api_key_added: changes.apiKeyAdded,
+                api_key_removed: changes.apiKeyRemoved,
+                api_key_changed: changes.apiKeyChanged
+            });
+        },
+
+        trackApiModeChanged(enabled, reason) {
+            this.track('API Mode Changed', {
+                api_mode_enabled: enabled,
+                change_reason: reason // 'user_enabled', 'user_disabled', 'key_invalid', 'key_expired'
+            });
+
+            if (this.isAvailable()) {
+                mixpanel.people.set({ 'API Mode': enabled });
+            }
+        },
+
+        // Game Interaction Events
+        trackGameClicked(game) {
+            this.track('Game Clicked', {
+                game_name: game.name,
+                game_hours: Math.round(game.hoursTotal || 0),
+                has_achievements: !!game.achievements,
+                achievement_percent: game.achievements?.percent || null,
+                list_position: game.listPosition || null
+            });
+        },
+
+        trackGamesSorted(sortBy) {
+            this.track('Games Sorted', {
+                sort_option: sortBy
+            });
+        },
+
+        trackShowMoreClicked(expanded, totalGames) {
+            this.track('Show More Clicked', {
+                action: expanded ? 'expand' : 'collapse',
+                total_games: totalGames
+            });
+        },
+
+        // Navigation Events
+        trackHelpOpened() {
+            this.track('Help Opened');
+        },
+
+        trackKeyboardShortcutUsed(key, action) {
+            this.track('Keyboard Shortcut Used', {
+                key: key,
+                action: action
+            });
+        },
+
+        trackManualRefresh() {
+            this.track('Manual Refresh Triggered');
+        },
+
+        trackAutoRefresh() {
+            this.track('Auto Refresh Triggered');
+        },
+
+        // Error Events
+        trackError(errorType, details) {
+            this.track('Error Occurred', {
+                error_type: errorType,
+                error_details: details
+            });
+        },
+
+        // Overlay Events
+        trackOverlayClosed(overlayName, method) {
+            this.track('Overlay Closed', {
+                overlay_name: overlayName,
+                close_method: method // 'button', 'escape', 'backdrop'
+            });
+        },
+
+        // External Link Events
+        trackExternalLinkClicked(linkType, url) {
+            this.track('External Link Clicked', {
+                link_type: linkType, // 'steamid_io', 'steam_dev', 'steam_store'
+                destination_url: url
+            });
+        }
+    };
+
+    // ===================
     // Configuration
     // ===================
     const CONFIG = {
@@ -61,6 +331,13 @@
         initTheme();
         initSound();
         bindEvents();
+
+        // Initialize analytics
+        Analytics.setSuperProperties();
+        Analytics.trackPageView();
+        Analytics.trackSessionStart();
+        Analytics.identify(state.steamId);
+
         fetchData();
         startRefreshTimer();
     }
@@ -201,11 +478,13 @@
         state.isLoading = true;
         // Cancel any ongoing achievement fetch
         state.achievementFetchId++;
+        const fetchStartTime = performance.now();
 
         showLoadingOverlay('Loading profile...');
 
         try {
             if (state.apiMode && state.apiKey) {
+                Analytics.trackProfileLoadStarted('api');
                 try {
                     await fetchWithApi();
                     // hideLoadingOverlay is called inside fetchWithApi after basic data loads
@@ -213,10 +492,12 @@
                 } catch (error) {
                     console.warn('API fetch failed, falling back to XML:', error);
                     state.apiFailCount++;
+                    Analytics.trackProfileLoadFailed(error, 'api');
 
                     if (state.apiFailCount >= 2) {
                         hideLoadingOverlay();
                         showApiKeyPrompt();
+                        Analytics.trackApiModeChanged(false, 'key_invalid');
                         return;
                     } else {
                         showToast('API error, using basic mode', 'error');
@@ -225,12 +506,14 @@
             }
 
             // Fallback to XML
+            Analytics.trackProfileLoadStarted('xml');
             await fetchWithXml();
             hideLoadingOverlay();
         } catch (error) {
             console.error('Fetch failed:', error);
             hideLoadingOverlay();
             showError('Failed to load profile data');
+            Analytics.trackProfileLoadFailed(error, state.apiMode ? 'api' : 'xml');
         } finally {
             state.isLoading = false;
         }
@@ -391,6 +674,10 @@
         state.isLoading = false;
         playSound('refresh');
 
+        // Track profile load completion
+        const loadTime = performance.now() - (Analytics.pageLoadTime || 0);
+        Analytics.trackProfileLoadCompleted(profile, 'api', loadTime);
+
         // Fetch achievements in background (pass current fetchId to detect stale fetches)
         fetchAchievementsInBackground(games, state.achievementFetchId);
     }
@@ -428,6 +715,7 @@
 
         // Show loading indicator for achievements
         showToast(`Loading achievements for ${totalGames} games...`);
+        Analytics.trackAchievementsFetchStarted(totalGames);
 
         try {
             // Process in parallel batches
@@ -497,11 +785,19 @@
             // Only show completion toast if this fetch wasn't cancelled
             if (fetchId === state.achievementFetchId) {
                 showToast(`Achievements loaded: ${totalAchievements} unlocked`, 'success');
+                Analytics.trackAchievementsLoaded({
+                    totalAchievements,
+                    totalPossible,
+                    perfectGames,
+                    gamesWithAchievements,
+                    avgCompletion: gamesWithAchievements > 0 ? (totalAchievements / totalPossible) * 100 : 0
+                });
             }
         } catch (error) {
             console.error('Error fetching achievements:', error);
             if (fetchId === state.achievementFetchId) {
                 showToast('Failed to load some achievements', 'error');
+                Analytics.trackError('achievements_fetch_failed', error.message);
             }
         } finally {
             if (fetchId === state.achievementFetchId) {
@@ -623,10 +919,15 @@
             renderProfile(profile, false);
             playSound('refresh');
 
+            // Track profile load completion
+            const loadTime = performance.now() - (Analytics.pageLoadTime || 0);
+            Analytics.trackProfileLoadCompleted(profile, 'xml', loadTime);
+
         } catch (error) {
             console.error('Fetch error:', error);
             showError(error.message || 'Failed to load profile');
             playSound('error');
+            Analytics.trackProfileLoadFailed(error, 'xml');
         }
     }
 
@@ -827,7 +1128,7 @@
             }
 
             return `
-                <a href="${escapeHtml(game.link)}" target="_blank" rel="noopener" class="game-item">
+                <a href="${escapeHtml(game.link)}" target="_blank" rel="noopener" class="game-item" data-game-index="${index}">
                     <img class="game-icon" src="${escapeHtml(game.icon)}" alt="${escapeHtml(game.name)}" loading="lazy" onerror="this.style.display='none'">
                     <div class="game-info">
                         <div class="game-name">${escapeHtml(game.name)}</div>
@@ -837,6 +1138,19 @@
                 </a>
             `;
         }).join('');
+
+        // Add click tracking to game links
+        elements.gamesList.querySelectorAll('.game-item').forEach((item, index) => {
+            item.addEventListener('click', () => {
+                const game = gamesToShow[index];
+                if (game) {
+                    Analytics.trackGameClicked({
+                        ...game,
+                        listPosition: index + 1
+                    });
+                }
+            });
+        });
 
         // Show/hide "show more" button
         if (games.length > CONFIG.GAMES_PER_PAGE) {
@@ -904,11 +1218,15 @@
     function toggleTheme() {
         const themes = ['dark', 'light', 'steam'];
         const currentIndex = themes.indexOf(state.theme);
+        const previousTheme = state.theme;
         state.theme = themes[(currentIndex + 1) % themes.length];
 
         localStorage.setItem('steam-dashboard-theme', state.theme);
         applyTheme();
         playSound('theme');
+
+        // Analytics
+        Analytics.trackThemeChanged(state.theme, previousTheme);
 
         const themeNames = { dark: 'Dark', light: 'Light', steam: 'Steam' };
         showToast(`Theme: ${themeNames[state.theme]}`);
@@ -943,6 +1261,9 @@
         state.soundEnabled = !state.soundEnabled;
         localStorage.setItem('steam-dashboard-sound', state.soundEnabled);
         updateSoundIcon();
+
+        // Analytics
+        Analytics.trackSoundToggled(state.soundEnabled);
 
         if (state.soundEnabled) playSound('theme');
         showToast(`Sound: ${state.soundEnabled ? 'On' : 'Off'}`);
@@ -1052,6 +1373,7 @@
             updateRefreshDisplay();
 
             if (state.refreshCountdown <= 0) {
+                Analytics.trackAutoRefresh();
                 fetchData();
                 state.refreshCountdown = 300;
             }
@@ -1065,6 +1387,7 @@
     }
 
     function manualRefresh() {
+        Analytics.trackManualRefresh();
         fetchData();
         state.refreshCountdown = 300;
         showToast('Refreshing...');
@@ -1076,6 +1399,7 @@
     function openHelp() {
         elements.helpOverlay.classList.add('active');
         elements.helpOverlay.querySelector('.overlay-close').focus();
+        Analytics.trackHelpOpened();
     }
 
     function openSettings() {
@@ -1083,6 +1407,7 @@
         elements.apiKeyInput.value = state.apiKey || '';
         elements.settingsOverlay.classList.add('active');
         elements.steamIdInput.focus();
+        Analytics.trackSettingsOpened();
     }
 
     function showApiKeyPrompt() {
@@ -1098,6 +1423,7 @@
     async function applySettings() {
         const newSteamId = elements.steamIdInput.value;
         const newApiKey = elements.apiKeyInput.value;
+        const oldApiKey = state.apiKey;
 
         // Show button loading state
         if (elements.settingsApplyBtn) {
@@ -1109,6 +1435,19 @@
             const keyChanged = newApiKey !== state.apiKey;
             setApiKey(newApiKey);
 
+            // Analytics for settings changes
+            Analytics.trackSettingsSaved({
+                steamIdChanged: idChanged,
+                apiKeyAdded: !oldApiKey && !!newApiKey,
+                apiKeyRemoved: !!oldApiKey && !newApiKey,
+                apiKeyChanged: keyChanged && !!oldApiKey && !!newApiKey
+            });
+
+            // Re-identify user if Steam ID changed
+            if (idChanged) {
+                Analytics.identify(state.steamId);
+            }
+
             closeAllOverlays();
 
             if (idChanged || keyChanged) {
@@ -1118,6 +1457,7 @@
         } catch (error) {
             console.error('Failed to apply settings:', error);
             showToast('Failed to save settings', 'error');
+            Analytics.trackError('settings_save_failed', error.message);
         } finally {
             // Always remove button loading state
             if (elements.settingsApplyBtn) {
@@ -1188,6 +1528,7 @@
                     e.target.classList.add('active');
                     elements.sortValue.textContent = e.target.textContent;
                     renderGamesList();
+                    Analytics.trackGamesSorted(sort);
                 }
                 elements.sortDropdown.classList.remove('open');
             }
@@ -1204,6 +1545,7 @@
         elements.showMoreBtn.addEventListener('click', () => {
             state.gamesExpanded = !state.gamesExpanded;
             renderGamesList();
+            Analytics.trackShowMoreClicked(state.gamesExpanded, state.allGames.length);
         });
 
         // Keyboard shortcuts
@@ -1212,6 +1554,19 @@
         // Initialize audio context on first interaction
         document.addEventListener('click', initAudioContext, { once: true });
         document.addEventListener('keydown', initAudioContext, { once: true });
+
+        // Track external link clicks
+        document.querySelectorAll('a[target="_blank"]').forEach(link => {
+            link.addEventListener('click', () => {
+                const href = link.href;
+                let linkType = 'other';
+                if (href.includes('steamid.io')) linkType = 'steamid_io';
+                else if (href.includes('steamcommunity.com/dev')) linkType = 'steam_dev';
+                else if (href.includes('store.steampowered.com')) linkType = 'steam_store';
+
+                Analytics.trackExternalLinkClicked(linkType, href);
+            });
+        });
     }
 
     function handleKeydown(e) {
@@ -1238,12 +1593,30 @@
         }
 
         switch(e.key.toLowerCase()) {
-            case 't': toggleTheme(); break;
-            case 's': toggleSound(); break;
-            case 'r': manualRefresh(); break;
-            case 'i': openSettings(); break;
-            case '?': openHelp(); break;
-            case 'escape': closeAllOverlays(); break;
+            case 't':
+                Analytics.trackKeyboardShortcutUsed('t', 'toggle_theme');
+                toggleTheme();
+                break;
+            case 's':
+                Analytics.trackKeyboardShortcutUsed('s', 'toggle_sound');
+                toggleSound();
+                break;
+            case 'r':
+                Analytics.trackKeyboardShortcutUsed('r', 'manual_refresh');
+                manualRefresh();
+                break;
+            case 'i':
+                Analytics.trackKeyboardShortcutUsed('i', 'open_settings');
+                openSettings();
+                break;
+            case '?':
+                Analytics.trackKeyboardShortcutUsed('?', 'open_help');
+                openHelp();
+                break;
+            case 'escape':
+                Analytics.trackKeyboardShortcutUsed('escape', 'close_overlay');
+                closeAllOverlays();
+                break;
         }
     }
 
