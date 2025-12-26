@@ -14,7 +14,9 @@
         REFRESH_INTERVAL: 5 * 60 * 1000,
         TOAST_DURATION: 3000,
         GAMES_PER_PAGE: 5,
-        STEAM_API_BASE: 'https://api.steampowered.com'
+        STEAM_API_BASE: 'https://api.steampowered.com',
+        ACHIEVEMENT_BATCH_SIZE: 5,  // Fetch 5 games at a time
+        ACHIEVEMENT_DELAY: 200      // 200ms delay between batches
     };
 
     // ===================
@@ -76,6 +78,9 @@
         elements.unplayedGames = $('#unplayedGames');
         elements.completionRate = $('#completionRate');
         elements.accountValue = $('#accountValue');
+        elements.totalAchievements = $('#totalAchievements');
+        elements.perfectGames = $('#perfectGames');
+        elements.avgCompletion = $('#avgCompletion');
         elements.extendedStats = $('#extendedStats');
         elements.profileStats = $('#profileStats');
         elements.steamLevel = $('#steamLevel');
@@ -276,26 +281,39 @@
             }
         });
 
+        // Fetch achievements for all played games
+        updateLoadingText('Fetching achievements...');
+        const achievementData = await fetchAchievementsForGames(games);
+
         // Sort games by all-time playtime
         const sortedGames = [...games].sort((a, b) =>
             (b.playtime_forever || 0) - (a.playtime_forever || 0)
         );
 
-        state.allGames = sortedGames.map(game => ({
-            appid: game.appid,
-            name: game.name,
-            icon: game.img_icon_url ?
-                `https://media.steampowered.com/steamcommunity/public/images/apps/${game.appid}/${game.img_icon_url}.jpg` : '',
-            hoursTotal: (game.playtime_forever || 0) / 60,
-            hoursRecent: (game.playtime_2weeks || 0) / 60,
-            link: `https://store.steampowered.com/app/${game.appid}`
-        }));
+        state.allGames = sortedGames.map(game => {
+            const achData = achievementData.gameAchievements[game.appid];
+            return {
+                appid: game.appid,
+                name: game.name,
+                icon: game.img_icon_url ?
+                    `https://media.steampowered.com/steamcommunity/public/images/apps/${game.appid}/${game.img_icon_url}.jpg` : '',
+                hoursTotal: (game.playtime_forever || 0) / 60,
+                hoursRecent: (game.playtime_2weeks || 0) / 60,
+                link: `https://store.steampowered.com/app/${game.appid}`,
+                achievements: achData ? achData : null
+            };
+        });
 
         // Calculate completion rate (games played / total games)
         const completionRate = games.length > 0 ? (playedGames / games.length) * 100 : 0;
 
         // Estimate account value (rough estimate: $10 per game average)
         const accountValue = games.length * 10;
+
+        // Calculate average achievement completion
+        const avgAchievementCompletion = achievementData.gamesWithAchievements > 0
+            ? (achievementData.totalAchievements / achievementData.totalPossible) * 100
+            : 0;
 
         const profile = {
             steamId64: player.steamid,
@@ -317,7 +335,13 @@
             steamLevel: extraData.level,
             totalXP: extraData.xp,
             badgeCount: extraData.badges,
-            friendCount: extraData.friends
+            friendCount: extraData.friends,
+            // Achievement data
+            totalAchievements: achievementData.totalAchievements,
+            totalPossibleAchievements: achievementData.totalPossible,
+            perfectGames: achievementData.perfectGames,
+            gamesWithAchievements: achievementData.gamesWithAchievements,
+            avgAchievementCompletion: avgAchievementCompletion
         };
 
         state.data = profile;
@@ -372,6 +396,83 @@
         }
 
         return result;
+    }
+
+    async function fetchAchievementsForGames(games) {
+        const results = {
+            totalAchievements: 0,
+            totalPossible: 0,
+            perfectGames: 0,
+            gamesWithAchievements: 0,
+            gameAchievements: {}  // appid -> { achieved, total, percent }
+        };
+
+        const gamesWithPlaytime = games.filter(g => (g.playtime_forever || 0) > 0);
+        const totalGames = gamesWithPlaytime.length;
+
+        // Process in batches
+        for (let i = 0; i < totalGames; i += CONFIG.ACHIEVEMENT_BATCH_SIZE) {
+            const batch = gamesWithPlaytime.slice(i, i + CONFIG.ACHIEVEMENT_BATCH_SIZE);
+            const progress = Math.round(((i + batch.length) / totalGames) * 100);
+            updateLoadingText(`Fetching achievements... ${progress}% (${i + batch.length}/${totalGames})`);
+
+            // Fetch batch in parallel
+            const batchPromises = batch.map(game => fetchGameAchievements(game.appid));
+            const batchResults = await Promise.all(batchPromises);
+
+            // Process results
+            batchResults.forEach((achData, idx) => {
+                const game = batch[idx];
+                if (achData && achData.total > 0) {
+                    results.totalAchievements += achData.achieved;
+                    results.totalPossible += achData.total;
+                    results.gamesWithAchievements++;
+                    results.gameAchievements[game.appid] = achData;
+
+                    if (achData.achieved === achData.total) {
+                        results.perfectGames++;
+                    }
+                }
+            });
+
+            // Small delay between batches to avoid rate limiting
+            if (i + CONFIG.ACHIEVEMENT_BATCH_SIZE < totalGames) {
+                await sleep(CONFIG.ACHIEVEMENT_DELAY);
+            }
+        }
+
+        return results;
+    }
+
+    async function fetchGameAchievements(appid) {
+        try {
+            const url = `${CONFIG.STEAM_API_BASE}/ISteamUserStats/GetPlayerAchievements/v1/?appid=${appid}&key=${state.apiKey}&steamid=${state.steamId}`;
+            const res = await fetch(CONFIG.CORS_PROXY + encodeURIComponent(url));
+
+            if (!res.ok) return null;
+
+            const data = await res.json();
+            if (!data.playerstats || !data.playerstats.achievements) {
+                return null;
+            }
+
+            const achievements = data.playerstats.achievements;
+            const achieved = achievements.filter(a => a.achieved === 1).length;
+            const total = achievements.length;
+
+            return {
+                achieved,
+                total,
+                percent: total > 0 ? Math.round((achieved / total) * 100) : 0
+            };
+        } catch (e) {
+            // Game may not have achievements or API error
+            return null;
+        }
+    }
+
+    function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
     }
 
     function getOnlineState(state) {
@@ -542,6 +643,21 @@
             if (elements.accountValue) {
                 elements.accountValue.textContent = profile.accountValue != null ? '$' + formatNumber(profile.accountValue) : '--';
             }
+            // Achievement stats
+            if (elements.totalAchievements) {
+                const achText = profile.totalAchievements != null
+                    ? `${formatNumber(profile.totalAchievements)} / ${formatNumber(profile.totalPossibleAchievements)}`
+                    : '--';
+                elements.totalAchievements.textContent = achText;
+            }
+            if (elements.perfectGames) {
+                elements.perfectGames.textContent = profile.perfectGames != null ? profile.perfectGames : '--';
+            }
+            if (elements.avgCompletion) {
+                elements.avgCompletion.textContent = profile.avgAchievementCompletion != null
+                    ? profile.avgAchievementCompletion.toFixed(1) + '%'
+                    : '--';
+            }
             if (elements.extendedStats) {
                 elements.extendedStats.classList.add('visible');
             }
@@ -566,20 +682,30 @@
             return;
         }
 
-        elements.gamesList.innerHTML = gamesToShow.map(game => `
-            <a href="${escapeHtml(game.link)}" target="_blank" rel="noopener" class="game-item">
-                <img class="game-icon" src="${escapeHtml(game.icon)}" alt="${escapeHtml(game.name)}" loading="lazy" onerror="this.style.display='none'">
-                <div class="game-info">
-                    <div class="game-name">${escapeHtml(game.name)}</div>
-                    <div class="game-hours">
-                        ${state.sortBy === 'recent' ?
-                            `<span class="game-hours-value">${game.hoursRecent?.toFixed(1) || 0}h</span> last 2 weeks` :
-                            `<span class="game-hours-value">${formatNumber(Math.round(game.hoursTotal || 0))}h</span> total`
-                        }
+        elements.gamesList.innerHTML = gamesToShow.map(game => {
+            const achievementHtml = game.achievements
+                ? `<div class="game-achievements ${game.achievements.percent === 100 ? 'perfect' : ''}">
+                       <span class="ach-percent">${game.achievements.percent}%</span>
+                       <span class="ach-count">${game.achievements.achieved}/${game.achievements.total}</span>
+                   </div>`
+                : '';
+
+            return `
+                <a href="${escapeHtml(game.link)}" target="_blank" rel="noopener" class="game-item">
+                    <img class="game-icon" src="${escapeHtml(game.icon)}" alt="${escapeHtml(game.name)}" loading="lazy" onerror="this.style.display='none'">
+                    <div class="game-info">
+                        <div class="game-name">${escapeHtml(game.name)}</div>
+                        <div class="game-hours">
+                            ${state.sortBy === 'recent' ?
+                                `<span class="game-hours-value">${game.hoursRecent?.toFixed(1) || 0}h</span> last 2 weeks` :
+                                `<span class="game-hours-value">${formatNumber(Math.round(game.hoursTotal || 0))}h</span> total`
+                            }
+                        </div>
                     </div>
-                </div>
-            </a>
-        `).join('');
+                    ${achievementHtml}
+                </a>
+            `;
+        }).join('');
 
         // Show/hide "show more" button
         if (games.length > CONFIG.GAMES_PER_PAGE) {

@@ -13,6 +13,10 @@
 <body>
     <!-- Toggle Buttons -->
     <div class="toggles">
+        <div class="mode-badge" id="modeBadge">
+            <span class="mode-badge-dot"></span>
+            <span class="mode-badge-text">BASIC</span>
+        </div>
         <button class="toggle-btn" id="soundToggle" aria-label="Toggle sound" title="Toggle sound (S)">
             <span class="icon sound-on"></span>
         </button>
@@ -23,11 +27,6 @@
 
     <!-- Main Content -->
     <main class="container">
-        <!-- Mode Badge -->
-        <div class="mode-badge" id="modeBadge">
-            <span class="mode-badge-dot"></span>
-            <span class="mode-badge-text">BASIC</span>
-        </div>
 
         <!-- Header -->
         <header class="header">
@@ -108,7 +107,19 @@
                 <span id="unplayedGames" class="stat-row-value">--</span>
             </div>
             <div class="stat-row">
-                <span class="stat-row-label">Completion rate</span>
+                <span class="stat-row-label">Achievements unlocked</span>
+                <span id="totalAchievements" class="stat-row-value">--</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-row-label">Perfect games (100%)</span>
+                <span id="perfectGames" class="stat-row-value">--</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-row-label">Avg achievement completion</span>
+                <span id="avgCompletion" class="stat-row-value">--</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-row-label">Library completion</span>
                 <span id="completionRate" class="stat-row-value">--</span>
             </div>
             <div class="stat-row">
