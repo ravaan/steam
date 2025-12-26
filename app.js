@@ -93,7 +93,10 @@
         elements.loadingText = $('#loadingText');
         elements.gamesList = $('#gamesList');
         elements.showMoreBtn = $('#showMoreBtn');
-        elements.sortToggle = $('#sortToggle');
+        elements.sortDropdown = $('#sortDropdown');
+        elements.sortDropdownBtn = $('#sortDropdownBtn');
+        elements.sortValue = $('#sortValue');
+        elements.sortMenu = $('#sortMenu');
         elements.refreshTimer = $('#refreshTimer');
         elements.helpOverlay = $('#helpOverlay');
         elements.settingsOverlay = $('#settingsOverlay');
@@ -712,17 +715,22 @@
                    </div>`
                 : '';
 
+            // Determine what to show based on sort
+            let hoursHtml;
+            if (state.sortBy === 'recent') {
+                hoursHtml = `<span class="game-hours-value">${game.hoursRecent?.toFixed(1) || 0}h</span> last 2 weeks`;
+            } else if (state.sortBy === 'completion') {
+                hoursHtml = `<span class="game-hours-value">${formatNumber(Math.round(game.hoursTotal || 0))}h</span> played`;
+            } else {
+                hoursHtml = `<span class="game-hours-value">${formatNumber(Math.round(game.hoursTotal || 0))}h</span> total`;
+            }
+
             return `
                 <a href="${escapeHtml(game.link)}" target="_blank" rel="noopener" class="game-item">
                     <img class="game-icon" src="${escapeHtml(game.icon)}" alt="${escapeHtml(game.name)}" loading="lazy" onerror="this.style.display='none'">
                     <div class="game-info">
                         <div class="game-name">${escapeHtml(game.name)}</div>
-                        <div class="game-hours">
-                            ${state.sortBy === 'recent' ?
-                                `<span class="game-hours-value">${game.hoursRecent?.toFixed(1) || 0}h</span> last 2 weeks` :
-                                `<span class="game-hours-value">${formatNumber(Math.round(game.hoursTotal || 0))}h</span> total`
-                            }
-                        </div>
+                        <div class="game-hours">${hoursHtml}</div>
                     </div>
                     ${achievementHtml}
                 </a>
@@ -743,10 +751,21 @@
         if (!state.allGames || state.allGames.length === 0) return [];
 
         return [...state.allGames].sort((a, b) => {
-            if (state.sortBy === 'recent') {
-                return (b.hoursRecent || 0) - (a.hoursRecent || 0);
+            switch (state.sortBy) {
+                case 'recent':
+                    return (b.hoursRecent || 0) - (a.hoursRecent || 0);
+                case 'completion':
+                    const aPercent = a.achievements?.percent ?? -1;
+                    const bPercent = b.achievements?.percent ?? -1;
+                    return bPercent - aPercent;
+                case 'name-asc':
+                    return (a.name || '').localeCompare(b.name || '');
+                case 'name-desc':
+                    return (b.name || '').localeCompare(a.name || '');
+                case 'alltime':
+                default:
+                    return (b.hoursTotal || 0) - (a.hoursTotal || 0);
             }
-            return (b.hoursTotal || 0) - (a.hoursTotal || 0);
         });
     }
 
@@ -1048,16 +1067,30 @@
             openSettings();
         });
 
-        // Sort toggle
-        elements.sortToggle.addEventListener('click', (e) => {
-            if (e.target.classList.contains('sort-btn')) {
+        // Sort dropdown
+        elements.sortDropdownBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            elements.sortDropdown.classList.toggle('open');
+        });
+
+        elements.sortMenu.addEventListener('click', (e) => {
+            if (e.target.classList.contains('sort-option')) {
                 const sort = e.target.dataset.sort;
                 if (sort && sort !== state.sortBy) {
                     state.sortBy = sort;
-                    $$('.sort-btn').forEach(btn => btn.classList.remove('active'));
+                    $$('.sort-option').forEach(btn => btn.classList.remove('active'));
                     e.target.classList.add('active');
+                    elements.sortValue.textContent = e.target.textContent;
                     renderGamesList();
                 }
+                elements.sortDropdown.classList.remove('open');
+            }
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!elements.sortDropdown.contains(e.target)) {
+                elements.sortDropdown.classList.remove('open');
             }
         });
 

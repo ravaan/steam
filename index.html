@@ -132,9 +132,19 @@
         <section class="games-section" aria-label="Games library">
             <div class="section-header">
                 <h2 class="section-title">Games</h2>
-                <div class="sort-toggle" id="sortToggle">
-                    <button class="sort-btn active" data-sort="alltime">All-Time</button>
-                    <button class="sort-btn" data-sort="recent">Recent</button>
+                <div class="sort-dropdown" id="sortDropdown">
+                    <button class="sort-dropdown-btn" id="sortDropdownBtn">
+                        <span class="sort-label">Sort:</span>
+                        <span class="sort-value" id="sortValue">Hours (All-Time)</span>
+                        <span class="sort-arrow"></span>
+                    </button>
+                    <div class="sort-dropdown-menu" id="sortMenu">
+                        <button class="sort-option active" data-sort="alltime">Hours (All-Time)</button>
+                        <button class="sort-option" data-sort="recent">Hours (Recent)</button>
+                        <button class="sort-option" data-sort="completion">Completion %</button>
+                        <button class="sort-option" data-sort="name-asc">Name (A-Z)</button>
+                        <button class="sort-option" data-sort="name-desc">Name (Z-A)</button>
+                    </div>
                 </div>
             </div>
             <div id="gamesList" class="games-list">
