@@ -103,7 +103,7 @@
 
         // Profile Loading Events
         trackProfileLoadStarted(mode) {
-            mixpanel.time_event('Profile Loaded');
+            if (this.isAvailable()) mixpanel.time_event('Profile Loaded');
             this.track('Profile Load Started', {
                 load_mode: mode // 'api' or 'xml'
             });
@@ -144,7 +144,7 @@
 
         // Achievement Events
         trackAchievementsFetchStarted(gameCount) {
-            mixpanel.time_event('Achievements Loaded');
+            if (this.isAvailable()) mixpanel.time_event('Achievements Loaded');
             this.track('Achievements Fetch Started', {
                 games_to_fetch: gameCount
             });
@@ -559,7 +559,7 @@
             fetchWithTimeout(CONFIG.CORS_PROXY + encodeURIComponent(friendsUrl), 10000).catch(() => null)
         ]);
 
-        if (!ownedRes.ok || !playerRes.ok) {
+        if (!ownedRes || !ownedRes.ok || !playerRes || !playerRes.ok) {
             throw new Error('API request failed');
         }
 
