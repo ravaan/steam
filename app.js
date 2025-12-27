@@ -1148,7 +1148,7 @@
             return;
         }
 
-        elements.gamesList.innerHTML = gamesToShow.map(game => {
+        elements.gamesList.innerHTML = gamesToShow.map((game, index) => {
             const achievementHtml = game.achievements
                 ? `<div class="game-achievements ${game.achievements.percent === 100 ? 'perfect' : ''}">
                        <span class="ach-percent">${game.achievements.percent}%</span>
