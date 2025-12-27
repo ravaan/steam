@@ -280,7 +280,13 @@
     // ===================
     const CONFIG = {
         DEFAULT_STEAM_ID: '76561198123404228',
-        CORS_PROXY: 'https://api.allorigins.win/raw?url=',
+        CORS_PROXIES: [
+            { url: 'https://api.codetabs.com/v1/proxy?quest=', encode: true },
+            { url: 'https://api.allorigins.win/raw?url=', encode: true },
+            { url: 'https://corsproxy.io/?', encode: true }
+        ],
+        CORS_PROXY: 'https://api.codetabs.com/v1/proxy?quest=',  // Will be updated dynamically
+        CORS_PROXY_ENCODE: true,  // Whether to URL-encode the target URL
         REFRESH_INTERVAL: 5 * 60 * 1000,
         TOAST_DURATION: 3000,
         GAMES_PER_PAGE: 5,
@@ -324,7 +330,7 @@
     // ===================
     // Initialization
     // ===================
-    function init() {
+    async function init() {
         cacheElements();
         initSteamId();
         initApiKey();
@@ -338,8 +344,41 @@
         Analytics.trackSessionStart();
         Analytics.identify(state.steamId);
 
+        // Find working CORS proxy
+        await initCorsProxy();
+
         fetchData();
         startRefreshTimer();
+    }
+
+    // Try each CORS proxy until one works
+    async function initCorsProxy() {
+        const testUrl = 'https://steamcommunity.com/profiles/76561198123404228/?xml=1';
+
+        for (const proxy of CONFIG.CORS_PROXIES) {
+            try {
+                const fullUrl = proxy.url + (proxy.encode ? encodeURIComponent(testUrl) : testUrl);
+                const response = await fetchWithTimeout(fullUrl, 5000);
+                if (response.ok) {
+                    const text = await response.text();
+                    if (text.includes('steamID64')) {
+                        CONFIG.CORS_PROXY = proxy.url;
+                        CONFIG.CORS_PROXY_ENCODE = proxy.encode;
+                        console.log('Using CORS proxy:', proxy.url);
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.log('Proxy failed:', proxy.url, e.message);
+            }
+        }
+
+        console.warn('No working CORS proxy found, using default');
+    }
+
+    // Build proxied URL based on current proxy settings
+    function proxyUrl(url) {
+        return CONFIG.CORS_PROXY + (CONFIG.CORS_PROXY_ENCODE ? encodeURIComponent(url) : url);
     }
 
     function cacheElements() {
@@ -552,11 +591,11 @@
 
         // Fetch all basic data in parallel (with timeout)
         const [ownedRes, playerRes, levelRes, badgesRes, friendsRes] = await Promise.all([
-            fetchWithTimeout(CONFIG.CORS_PROXY + encodeURIComponent(ownedGamesUrl), 20000),
-            fetchWithTimeout(CONFIG.CORS_PROXY + encodeURIComponent(playerUrl), 20000),
-            fetchWithTimeout(CONFIG.CORS_PROXY + encodeURIComponent(levelUrl), 10000).catch(() => null),
-            fetchWithTimeout(CONFIG.CORS_PROXY + encodeURIComponent(badgesUrl), 10000).catch(() => null),
-            fetchWithTimeout(CONFIG.CORS_PROXY + encodeURIComponent(friendsUrl), 10000).catch(() => null)
+            fetchWithTimeout(proxyUrl(ownedGamesUrl), 20000),
+            fetchWithTimeout(proxyUrl(playerUrl), 20000),
+            fetchWithTimeout(proxyUrl(levelUrl), 10000).catch(() => null),
+            fetchWithTimeout(proxyUrl(badgesUrl), 10000).catch(() => null),
+            fetchWithTimeout(proxyUrl(friendsUrl), 10000).catch(() => null)
         ]);
 
         if (!ownedRes || !ownedRes.ok || !playerRes || !playerRes.ok) {
@@ -809,7 +848,7 @@
     async function fetchGameAchievements(appid) {
         try {
             const url = `${CONFIG.STEAM_API_BASE}/ISteamUserStats/GetPlayerAchievements/v1/?appid=${appid}&key=${state.apiKey}&steamid=${state.steamId}`;
-            const res = await fetch(CONFIG.CORS_PROXY + encodeURIComponent(url));
+            const res = await fetch(proxyUrl(url));
 
             if (!res.ok) return null;
 
@@ -886,10 +925,10 @@
 
     async function fetchWithXml() {
         const steamUrl = `https://steamcommunity.com/profiles/${state.steamId}/?xml=1`;
-        const proxyUrl = CONFIG.CORS_PROXY + encodeURIComponent(steamUrl);
+        const fetchUrl = proxyUrl(steamUrl);
 
         try {
-            const response = await fetchWithTimeout(proxyUrl, 20000);
+            const response = await fetchWithTimeout(fetchUrl, 20000);
             if (!response.ok) throw new Error('Network error');
 
             const text = await response.text();
